@@ -1,0 +1,511 @@
+# Gradia Capture（本地 fork）— OCR 与翻译功能实施方案
+
+> 交接文档。开发方：dsh（专业代码 agent）。需求方：jssd。
+> 目标：在本仓库的 **本地 fork 分支** 上实现「截图 → OCR → 可选翻译 → 剪贴板/浮层」。
+> 本文档中的所有约定（默认值、命名、禁止事项）都是需求方已拍板的结论，**不要自行更改**；有疑问先记录，最后统一问。
+
+---
+
+## 1. 背景
+
+### 1.1 项目与仓库关系
+
+- 上游：`https://github.com/AlexanderVanhee/gradia-capture`（GPLv3，个人维护）
+- 本仓库：`https://github.com/jssda/gradia-capture`，是本地维护的 fork
+- 本地工作副本：`/home/jssd/project/gradia-capture`
+
+分支模型（已建立，勿改）：
+
+```
+master                 = 上游镜像，只允许 fast-forward（跟踪 upstream/master）
+local                  = master + 本地提交（GNOME 48 支持、gettext+zh_CN、CHANGELOG/许可）
+gnome-48-support       = 已提交上游的 PR 分支（PR #43）
+i18n-gettext-zh_CN     = 已提交上游的 PR 分支（PR #44）
+feature/ocr-translate  = 本次开发的开发分支（从 local 拉出）
+```
+
+### 1.2 扩展当前如何做 OCR（关键背景）
+
+`src/extension.js` 第 1264 行附近：
+
+```js
+if (isGradiaFlatpakInstalled()) {
+    const ui = Main.screenshotUI;
+    this._ocrButton = createOcrButton(async () => {
+        const file = await this._captureScreenshot({ ocr: true });
+        Main.screenshotUI.close();
+        launchGradiaOcrForFile(file);      // ← 把 PNG 交给 Gradia flatpak 应用
+    });
+    ui._showPointerButtonContainer.insert_child_below(this._ocrButton, ui._showPointerButton);
+}
+```
+
+要点：
+
+1. 扩展**自己不做识别**，只是转发给外部 Gradia 应用；本机**没有安装**该 flatpak，所以现在按钮根本不会创建；
+2. 截图链路已经完整：`_captureScreenshot({ocr:true})` 返回一个 `Gio.File`（PNG，已包含标注合成、已按选区裁剪），我们只需接管“拿到文件之后做什么”；
+3. 快捷键 `Ctrl+E` 已经绑定到该按钮；`Ctrl+C/S/Z` 也已被占用；
+4. 扩展在 Wayland 下的截图来源是 `Shell.Screenshot.composite_to_stream()`，**不需要再做一次系统截图**。
+
+### 1.3 需求方已确认的产品决策
+
+| 编号 | 决策 |
+|---|---|
+| D1 | **保留 Gradia 转发优先**：装了 Gradia 且未改配置就沿用上游行为（利于后续 rebase，少动上游代码） |
+| D2 | OCR 引擎三选一：`gradia`（转发）/ `rapidocr`（本地）/ `llm`（多模态大模型） |
+| D3 | RapidOCR 的 Python venv 放在 **扩展数据目录**：`~/.local/share/gradia-capture/venv` |
+| D4 | **不预填任何 LLM 配置**（base_url / model / key 全为空）；文档示例使用 DeepSeek |
+| D5 | 仅支持 **OpenAI 兼容** 的 `/chat/completions` 协议，不做其他厂商适配 |
+| D6 | OCR 用 LLM 与翻译用 LLM **分开配置**；翻译可「继承 OCR 的配置」 |
+| D7 | 继承时启用 **一体化**：一次请求同时返回原文与译文（仅当两处都用 LLM 且继承开启） |
+| D8 | 目标语言可配置，默认 `zh-CN` |
+| D9 | 每个网络后端独立代理设置：`system` / `direct` / `custom`（原因：Google 需走代理，国内大模型需直连） |
+| D10 | 全部新增界面文案必须走 gettext，并提供 zh_CN 译文（不留未翻译条目） |
+| D11 | 本期结果呈现只用 **MVP**：写入剪贴板 + 顶部 toast；结果面板留到后续 |
+
+---
+
+## 2. 范围
+
+### 2.1 本期要做（In scope）
+
+- 三档 OCR 引擎与派发逻辑
+- OpenAI 兼容的 LLM OCR（多模态）与 LLM 翻译
+- Google 免 key 翻译
+- 翻译继承 / 一体化模式
+- 三组代理配置
+- 剪贴板输出 + toast 展示（可复制原文/译文）
+- 首选项界面（引擎选择、两套 LLM 配置、代理、目标语言、说明文字）
+- i18n 文案（zh_CN 完整）
+
+### 2.2 本期不做（Out of scope）
+
+- 结果面板 / 可编辑文本窗（已知在 Shell 内 `St.Entry` 拿不到 fcitx5 候选，见上游 issue #19，故不做编辑）
+- 识别框可视化、表格结构还原、批量处理、历史记录
+- 流式输出、失败重试与队列
+- 除 OpenAI 兼容格式外的任何厂商专有协议
+- 上游 PR（本功能是 fork 专属，不进上游）
+
+---
+
+## 3. 用户可见行为（验收基准）
+
+1. 按 `Ctrl+E`（或点工具条 OCR 按钮）→ 选区 → 松手；
+2. 若 OCR 后端未配置/未装好：toast 明确报错，说明缺少什么、怎么修（含可复制的命令）；
+3. OCR 成功：
+   - 剪贴板写入识别结果（按 `ocr-copy-mode` 决定写原文、译文或两者）；
+   - toast 显示前 `ocr-toast-chars` 个字符，并提供「复制原文」「复制译文」「关闭」；
+4. OCR 成功但翻译失败：**原文照常可用**，toast 提示翻译失败原因；
+5. 全程桌面不得卡顿（所有阻塞操作异步）；
+6. 无网络、无 venv、无 key 的任意组合下，都要有明确且可操作的错误信息。
+
+---
+
+## 4. 架构
+
+### 4.1 新增文件（全部新增，避免与上游冲突）
+
+```
+src/net.js                网络层：按代理配置构造 Soup.Session，封装 GET/POST JSON
+src/ocr/engine.js         引擎派发与流程编排（OCR → 可选翻译 / 一体化）
+src/ocr/rapidocr.js       本地 RapidOCR：惰性探测 python，异步子进程
+src/ocr/llm.js            多模态 LLM OCR（OpenAI 兼容）
+src/translate.js          翻译：Google 免 key / LLM
+src/ocr/toast.js          OCR 结果 toast（复用现有样式）
+src/prefs/ocrPage.js      首选项中的「OCR 与翻译」页面
+python/ocr_helper.py      RapidOCR 命令行助手（打包进扩展）
+scripts/ocr-selftest.sh   自测脚本（三种后端对比，输出表格）
+docs/PLAN-ocr-translate.md 本文件
+```
+
+### 4.2 对既有文件的改动（改动必须最小，便于 rebase）
+
+| 文件 | 改动 |
+|---|---|
+| `src/extension.js` | ① 按钮创建条件放宽为 `isGradiaFlatpakInstalled() \|\| ocrEnabled`；② 回调里 `launchGradiaOcrForFile(file)` → `dispatchOcr(file)`（import 1 行） |
+| `src/prefs.js` | 顶部 import 新增页面；`fillPreferencesWindow()` 里追加一行 `window.add(this._ocrPage);`（或等价） |
+| `schemas/org.gnome.shell.extensions.gradia-companion.gschema.xml` | 在既有 `<schema>` 内**追加**新键（不改动已有 5 个键） |
+| `build.sh` | `gnome-extensions pack` 增加 `--extra-source="../python/ocr_helper.py"` |
+| `po/gradia-capture.pot`、`po/zh_CN.po` | 重新生成/合并，补译新增条目 |
+| `CHANGELOG.md` | 增加“fork 专属功能”小节（注明不进上游 PR） |
+
+### 4.3 数据流
+
+```
+Ctrl+E / 按钮
+   └─ _captureScreenshot({ocr:true}) → Gio.File(PNG)
+        └─ dispatchOcr(file)                       [src/ocr/engine.js]
+             ├─ provider = 'gradia'   → 上游行为（launchGradiaOcrForFile）
+             ├─ provider = 'rapidocr' → ocrWithRapidOcr(file)          [本地子进程]
+             └─ provider = 'llm'      → ocrWithLlm(pngBytes, cfg)      [网络]
+                  └─ 若 translate.provider=='llm' 且 inherit → 提示词要求同时返回译文（一体化）
+        └─ 若需要单独翻译 → translateText(text, …)  [src/translate.js]
+             ├─ google → translate_a/single（免 key）
+             └─ llm    → /chat/completions
+        └─ 写剪贴板 + showOcrToast({text, translation})
+```
+
+### 4.4 模块契约（函数签名与返回结构，实现必须遵守）
+
+```js
+// src/ocr/engine.js
+export async function dispatchOcr(file /* Gio.File */, opts = {})
+// → { engine: 'gradia'|'rapidocr'|'llm', text: string, translation: string|null,
+//     timedOut?: false, ms: { ocr: number, translate: number, total: number }, warnings: string[] }
+
+// src/ocr/rapidocr.js
+export async function ocrWithRapidOcr(file, { pythonPath, lang, timeoutMs })
+// → { text, lines: [{ text, score }], ms }
+
+// src/ocr/llm.js
+export async function ocrWithLlm(pngBytes /* GLib.Bytes|Uint8Array */, cfg,
+                                 { translate = false, targetLang = 'zh-CN', extraBody = {} })
+// → { text, translation: string|null, ms, requestId?: string }
+
+// src/translate.js
+export async function translateText(text, { provider, targetLang, profile })
+// → string
+
+// src/net.js
+export function sessionFor({ mode /* 'system'|'direct'|'custom' */, url, ignoreHosts })
+export async function requestJson(session, { method, url, headers, json, timeoutMs })
+// → { status, data }；失败抛 OcrError
+
+// src/ocr/toast.js
+export function showOcrToast({ text, translation, chars })   // 复用 screenshotToast 的样式类
+export function destroyOcrToast()
+```
+
+---
+
+## 5. 配置项（GSettings）
+
+**全部加进现有 schema** `org.gnome.shell.extensions.gradia-companion`（路径不变），键名与默认值如下，**默认值不得改动**（尤其不得预填 URL/model/key）。
+
+| 键 | 类型 | 默认 | 说明 |
+|---|---|---|---|
+| `ocr-enabled` | `b` | `true` | 关闭后即使装了 Gradia 也不显示 OCR 按钮 |
+| `ocr-provider` | `s` | `'gradia'` | 可选：`gradia` / `rapidocr` / `llm`（用 `<choices>` 约束） |
+| `ocr-rapidocr-python` | `s` | `''` | 空 = 使用 `<扩展数据目录>/venv/bin/python` |
+| `ocr-rapidocr-lang` | `s` | `'ch'` | RapidOCR 的 `--lang_type` |
+| `ocr-rapidocr-timeout-ms` | `i` | `30000` | 子进程超时 |
+| `ocr-llm-enabled` | `b` | `false` | LLM OCR 总开关（`ocr-provider='llm'` 时仍要求此开关为真，否则报“未启用”） |
+| `ocr-llm-base-url` | `s` | `''` | 例：`https://api.deepseek.com`（不预填） |
+| `ocr-llm-model` | `s` | `''` | 例：`deepseek-flash`（不预填） |
+| `ocr-llm-api-key` | `s` | `''` | 明文存 dconf；仅本机 |
+| `ocr-llm-api-key-file` | `s` | `''` | 非空则优先读该文件首行（权限建议 600） |
+| `ocr-llm-proxy-mode` | `s` | `'direct'` | `system` / `direct` / `custom` |
+| `ocr-llm-proxy-url` | `s` | `'http://127.0.0.1:12334'` | 仅 `custom` 时使用 |
+| `ocr-llm-timeout-ms` | `i` | `60000` | 网络超时 |
+| `ocr-llm-prompt` | `s` | `''` | 空 = 内置提示词 |
+| `ocr-llm-extra-body` | `s` | `'{}'` | JSON，浅合并进请求体（用于厂商扩展参数，如关闭思考模式） |
+| `translate-enabled` | `b` | `true` | 是否翻译（`translate-provider='none'` 时无效） |
+| `translate-provider` | `s` | `'none'` | `none` / `google` / `llm` |
+| `translate-target-lang` | `s` | `'zh-CN'` | 目标语言（Google 与 LLM 共用） |
+| `translate-llm-inherit` | `b` | `true` | 继承 OCR 的 LLM 配置 |
+| `translate-llm-base-url` | `s` | `''` | 独立配置（`inherit=false` 时生效） |
+| `translate-llm-model` | `s` | `''` | 同上 |
+| `translate-llm-api-key` | `s` | `''` | 同上 |
+| `translate-llm-api-key-file` | `s` | `''` | 同上 |
+| `translate-llm-proxy-mode` | `s` | `'direct'` | 同上 |
+| `translate-llm-proxy-url` | `s` | `'http://127.0.0.1:12334'` | 同上 |
+| `translate-llm-timeout-ms` | `i` | `30000` | 同上 |
+| `translate-llm-extra-body` | `s` | `'{}'` | 同上 |
+| `google-proxy-mode` | `s` | `'system'` | Google 翻译的代理 |
+| `google-proxy-url` | `s` | `'http://127.0.0.1:12334'` | 仅 `custom` 时使用 |
+| `ocr-copy-mode` | `s` | `'both'` | `text` / `translation` / `both`（`both` = 原文 + 空行 + 译文） |
+| `ocr-toast-chars` | `i` | `200` | toast 中预览的字符数（`0` 表示不截断） |
+
+代理语义（**已在本机验证**）：
+
+- `system`：不设置 `proxy-resolver`，走 GLib 系统代理（本机为 manual → `127.0.0.1:12334`）；
+- `direct`：`Gio.SimpleProxyResolver.new('direct://', [])`；
+- `custom`：`Gio.SimpleProxyResolver.new(<url>, ['localhost', '127.0.0.1'])`；
+- 挂到会话：`soupSession.set_property('proxy-resolver', resolver)`。
+
+**注意**：`Soup.Session.timeout` 是秒（`guint`），配置里的 `*-timeout-ms` 需要换算；请求取消/超时请用 `Gio.Cancellable` + `GLib.timeout_add`，不要用同步调用。
+
+---
+
+## 6. LLM 协议规范（仅 OpenAI 兼容）
+
+### 6.1 请求
+
+```
+POST {base_url}/chat/completions          // base_url 末尾斜杠需归一化
+Authorization: Bearer <key>
+Content-Type: application/json
+
+{
+  "model": "<model>",
+  "temperature": 0,
+  "max_tokens": 1024,          // 可在 extra-body 覆盖
+  "messages": [
+    { "role": "system", "content": "<内置系统提示词>" },
+    { "role": "user", "content": [
+        { "type": "text", "text": "<指令>" },
+        { "type": "image_url", "image_url": { "url": "data:image/png;base64,<...>" } }
+    ]}
+  ]
+}
+```
+
+- 图片一律 PNG data URL（OCR 路径已是 PNG）；
+- `extra-body` 做**浅合并**（顶层键覆盖）；
+- 只从 `choices[0].message.content` 取文本；`content` 为数组时拼接其中的 `text` 字段。
+
+### 6.2 提示词（内置，`ocr-llm-prompt` 为空时使用）
+
+**仅 OCR：**
+
+```
+只识别图片中的文字，按原始阅读顺序逐行输出，保留换行与标点，不要解释、不要加引号、不要 Markdown 代码块。
+```
+
+**一体化（OCR + 翻译）：**
+
+```
+识别图片中的文字，并翻译成 {targetLang}。
+只输出一个 JSON 对象，不要代码块、不要额外文字，格式：
+{"text": "原文（保留换行）", "translation": "译文"}
+```
+
+### 6.3 响应解析（必须容错）
+
+1. 去掉首尾空白与 ```json / ``` 围栏；
+2. 若整体不是合法 JSON：截取第一个 `{` 到最后一个 `}` 再解析；
+3. 仍失败：把整段文本当作 `text`，`translation=null`，并在 `warnings` 里记录 `LLM_BAD_JSON`；
+4. 字段缺失或空字符串视为失败，抛 `OcrError('LLM_EMPTY')`。
+
+### 6.4 厂商示例（文档与首选项说明里使用，**不预填**）
+
+- DeepSeek（OpenAI 兼容）：`base_url = https://api.deepseek.com`，`model = deepseek-flash`（支持图片输入，可同时用于 OCR 与翻译）。
+- 其他厂商只要兼容 `/chat/completions` 即可；OCR 要求模型**支持图片输入**，纯文本模型只能用于翻译。
+- 部分厂商默认开启“思考模式”，会增加延迟；可用 `ocr-llm-extra-body` 传厂商参数关闭（具体键名以厂商文档为准）。
+
+---
+
+## 7. 本地 RapidOCR 规范
+
+### 7.1 环境（由开发者创建，不写入仓库）
+
+```bash
+uv venv --python 3.13 ~/.local/share/gradia-capture/venv
+uv pip install --python ~/.local/share/gradia-capture/venv/bin/python -i https://pypi.tuna.tsinghua.edu.cn/simple rapidocr onnxruntime
+```
+
+说明：Debian 13 的系统 Python 受 PEP 668 保护，必须用 venv；`uv` 已安装。
+
+### 7.2 助手脚本 `python/ocr_helper.py`
+
+- 参数：`--json --lang <ch|en|...> <image-path>`
+- 必须先把结果 `json.dumps(ensure_ascii=False)` 打到 stdout，**不要在 stdout 打日志**（日志走 stderr）；
+- stdout 成功格式：
+
+```json
+{"ok": true, "engine": "rapidocr", "ms": 812,
+ "lines": [{"text": "第一行", "score": 0.98}],
+ "text": "第一行\n第二行"}
+```
+
+- 失败格式（退出码 1）：
+
+```json
+{"ok": false, "error": "MODEL_LOAD_FAILED", "detail": "..."}
+```
+
+- 首次运行允许下载/加载模型（模型已随 wheel 提供，注意路径权限）。
+
+### 7.3 扩展侧调用
+
+1. **惰性**：只有 `ocr-provider='rapidocr'` 且真正触发时才解析 python 路径并 `stat`；
+2. python 解析顺序：`ocr-rapidocr-python` → `<XDG_DATA>/gradia-capture/venv/bin/python`；
+3. 不存在 → `OcrError('OCR_ENV_MISSING')`，提示文案包含上面两条安装命令；
+4. spawn：`Gio.Subprocess.new([py, helper, '--json', '--lang', lang, path], STDOUT_PIPE | STDERR_PIPE)`，随后 `communicate_utf8_async`；
+5. **禁止同步的 `communicate_utf8()`**；
+6. 超时：超过 `ocr-rapidocr-timeout-ms` 就 `force_exit()` 并报 `OCR_TIMEOUT`；
+7. 退出码非 0 / JSON 解析失败 → `OCR_FAILED`（stderr 截断 500 字符进 `detail`，仅记录日志，不展示给用户）。
+
+---
+
+## 8. Google 翻译
+
+```
+GET https://translate.googleapis.com/translate_a/single
+    ?client=gtx&sl=auto&tl=<targetLang>&dt=t&q=<urlencoded text>
+```
+
+- 返回 JSON 数组，取 `[0]` 中每段的 `[0]` 拼接；
+- 免 key，但需代理（默认 `system`）；
+- 文本长度 > 4000 字符时按段落分批（每批 ≤ 4000，串行，最多 3 批，超出部分只翻前 3 批并在 warnings 记 `TRUNCATED`）；
+- 失败抛 `NET_*` 错误码，由调用方决定是否降级（**原文必须保留**）。
+
+---
+
+## 9. UI 规范
+
+- 复用 `src/screenshotToast.js` 的样式类与结构思路，新建 `src/ocr/toast.js`（不要改动原 toast 组件的行为）；
+- toast 内容：标题（OCR / OCR + 翻译）、原文预览、译文预览、按钮「复制原文」「复制译文」「关闭」；
+- 剪贴板：`St.Clipboard.get_default().set_text(St.ClipboardType.CLIPBOARD, str)`；
+- 复制模式 `both` 时写入：`原文 + "\n\n" + 译文`；
+- 长文本按 `ocr-toast-chars` 截断预览（末尾加 `…`），**剪贴板内容不截断**；
+- 错误提示用现有通知机制（`Main.notify` 或扩展已有 toast），文案必须可操作（例：「未配置 OCR 后端：请在扩展设置 → OCR 与翻译中填写 base_url 与模型」）。
+
+---
+
+## 10. i18n 工作流
+
+1. 所有新增用户可见字符串（toast、通知、首选项标签/副标题/说明）必须走 `src/i18n.js` 的 `_()`；模块级常量用 `N_()` 并在使用时再套 `_()`（与现有 `tools.js` 一致）；
+2. 重新生成模板（命令已在本机验证，产出与现有 76 条一致）：
+
+```bash
+xgettext --from-code=UTF-8 --language=JavaScript \
+  --keyword=_ --keyword=N_ --keyword=n_:1,2 \
+  --package-name=gradia-capture --add-comments=TRANSLATORS: \
+  -o po/gradia-capture.pot src/*.js src/ocr/*.js src/prefs/*.js
+```
+
+3. 合并进中文：
+
+```bash
+msgmerge --update --backup=none po/zh_CN.po po/gradia-capture.pot
+```
+
+4. 新增条目**必须全部译完**，不留 `fuzzy`、不留空 `msgstr`；校验：
+
+```bash
+msgfmt --check -o /dev/null po/zh_CN.po
+grep -c 'msgstr ""' po/zh_CN.po   # 只应出现在头部
+```
+
+5. 不要改动已有 76 条 msgid（避免与上游 PR #44 冲突）。
+
+---
+
+## 11. 不变量与禁止事项
+
+1. **禁止同步阻塞**：不得在 shell 主线程调用 `communicate_utf8()`、`send_and_read()`、`read_line()` 等同步 API；
+2. **禁止 shell 命令拼接**：子进程一律用 argv 数组传参，不经过 `/bin/sh -c`；
+3. **禁止记录密钥**：日志、toast、错误 detail 中不得出现 API key（截断/脱敏 `sk-…abcd`）；
+4. **不改上游逻辑**：除 4.2 列出的 4 处小改动，不得重构 `extension.js` / `screenshotStore.js` 的既有流程；
+5. **不动已有 gschema 键与默认值**；
+6. **不把本功能混进上游 PR 分支**（`gnome-48-support`、`i18n-gettext-zh_CN` 保持干净）；
+7. **不新增 npm/pip 依赖到仓库**：Python 依赖只存在于用户本机 venv，仓库只放 `ocr_helper.py`；
+8. 所有新代码使用 ESM（`import ... from 'gi://...'`），与现有文件风格一致（4 空格缩进、单引号）。
+
+---
+
+## 12. 分阶段任务与验收（DoD）
+
+### P0 — 环境与基线数据（0.5–1 小时，不改仓库代码）
+
+- 建 venv，装 `rapidocr` + `onnxruntime`（清华源）；
+- 写 `python/ocr_helper.py` 原型，能在命令行对 PNG 输出约定 JSON；
+- 取 **3 张真实截图**（中文界面、英文终端、中英混排），分别跑：
+  - RapidOCR（本机耗时、识别文本）
+  - LLM 视觉 OCR（用户自填的网关；仅用于评估，不写入仓库）
+- 产出对照表（准确率主观评述 + 耗时），交回需求方决定默认引擎。
+
+**DoD**：数据表 + 结论；`git status` 干净。
+
+### P1 — LLM OCR 通路（0.5–1 天）
+
+范围：`net.js`、`ocr/llm.js`、`ocr/engine.js`（仅 llm 分支）、`ocr/toast.js`、LLM 相关设置键、最小 prefs 页、`extension.js` 两处改动、`build.sh` extra-source。
+
+**DoD（手工验收）**：
+1. 配置好 base_url/model/key 后，`Ctrl+E` 框选 → toast 显示文本 → 剪贴板有文本；
+2. 未配置时给出可操作错误提示，不崩溃；
+3. `journalctl --user -b -o cat /usr/bin/gnome-shell | grep -i gradia` 无 JS 异常；
+4. OCR 期间桌面可正常交互（拖动窗口不卡）。
+
+### P2 — 翻译（0.5 天）
+
+范围：`translate.js`、继承/一体化逻辑、目标语言、复制模式、相关设置项。
+
+**DoD**：
+1. `translate-provider=google`：验证译文正确（需系统代理可用）；
+2. `translate-provider=llm` + `inherit=false`：独立配置生效；
+3. `translate-provider=llm` + `inherit=true` + `ocr-provider=llm`：**只发一次请求**（用网关日志或本地抓包确认），返回原文+译文；
+4. 翻译失败时原文仍进剪贴板，toast 明确提示翻译失败。
+
+### P3 — RapidOCR 本地引擎（0.5 天）
+
+**DoD**：
+1. `ocr-provider=rapidocr` 在**断网**下可用；
+2. 未建 venv 时提示安装命令；
+3. `ocr-provider=llm` 时不 spawn python（验证方式：触发 OCR 后用 `pgrep -af ocr_helper.py` 应无输出）；
+4. 首次调用延迟有记录（预期 0.5–1.5 秒模型加载）。
+
+### P4 — 收尾（0.5 天）
+
+范围：三组代理的完整 UI 与说明文案、prefs 页面美化与分组、i18n 补译、`scripts/ocr-selftest.sh`、CHANGELOG。
+
+**DoD**：
+1. 三档代理各跑通一次（`system` 用 Google，`direct` 用国内网关，`custom` 故意指向一个不可用端口验证报错文案）；
+2. `msgfmt --check` 通过，po 无 fuzzy/空译；
+3. `./build.sh -i` 打包安装成功，注销重登后功能正常；
+4. CHANGELOG 增加 fork 专属功能小节（注明不进上游 PR）。
+
+---
+
+## 13. 测试与环境操作备忘
+
+### 13.1 语法与打包
+
+```bash
+# 纯语法检查（GNOME 扩展是 ESM，node 需要 .mjs 后缀识别）
+for f in src/*.js src/ocr/*.js src/prefs/*.js; do cp "$f" /tmp/chk.mjs; node --check /tmp/chk.mjs || echo "FAIL $f"; done
+
+./build.sh          # 只打包
+./build.sh -i       # 打包并安装到 ~/.local/share/gnome-shell/extensions/
+```
+
+### 13.2 重载与日志
+
+- **Wayland 下修改 JS 必须注销重新登录**才能生效（`gnome-extensions disable/enable` 不会重新加载代码）；
+- 日志：`journalctl --user -b -o cat /usr/bin/gnome-shell | grep -i gradia`；
+- 可选：用嵌套会话迭代（`dbus-run-session -- gnome-shell --nested --wayland`），不影响当前桌面，但需自行验证可用性。
+
+### 13.3 环境事实（本机，已核实）
+
+| 项 | 值 |
+|---|---|
+| 系统 | Debian 13.7，GNOME Shell 48.7，Wayland |
+| libadwaita | 1.7.6（**没有** `Adw.ShortcutLabel`，有 `Gtk.ShortcutLabel`） |
+| 网络库 | libsoup 3.6（`gi://Soup?version=3.0`），支持 `proxy-resolver` 属性 |
+| Python | 3.13.5，系统受 PEP 668 保护；`uv` 在 `~/.local/bin/uv` |
+| 图像工具 | ImageMagick（`magick`）已装；`tesseract` **未装**（本方案不依赖） |
+| 桌面代理 | `org.gnome.system.proxy` = manual → `127.0.0.1:12334` |
+| 扩展数据目录 | `~/.local/share/gradia-capture/`（venv 放这里，需自建） |
+
+---
+
+## 14. 风险与对策
+
+| 风险 | 对策 |
+|---|---|
+| Shell 内异步链写错导致桌面冻结 | 所有网络/子进程用 async + Cancellable；P1 DoD 明确“拖动窗口不卡” |
+| 上游私有 API 变动（`_showPointerButtonContainer` 等） | 改动面压到 2 行；出错时降级为「无按钮 + 通知」，不抛未捕获异常 |
+| LLM 返回非 JSON | 6.3 的容错解析；失败降级为纯文本 + warning |
+| 密钥泄漏 | 不入库、不落日志；支持 key 文件方式 |
+| 首次 RapidOCR 冷启动慢 | 惰性加载；文档说明；可后续做常驻服务（不在本期） |
+| Google 接口变动 | 报错文案明确；翻译失败不影响 OCR 结果 |
+| i18n 与上游 PR #44 冲突 | 只增补 po 条目，不改已有 msgid |
+
+---
+
+## 15. 交付物
+
+1. 分支：`feature/ocr-translate`（从 `local` 拉出），按 P0–P4 分阶段提交，每阶段一个或多个原子提交；
+2. 代码：第 4.1 / 4.2 节所列文件；
+3. 文档：本文件保持更新（决策变更必须回写）；`CHANGELOG.md` 增加该功能小节；
+4. 自测：`scripts/ocr-selftest.sh` + P0 的对照数据；
+5. **不推送上游**，不创建 PR；是否合并回 `local` 由需求方决定。
+
+---
+
+## 16. 待开发方确认的问题（实现前一次性提出）
+
+1. `ocr-llm-extra-body` 是否足以覆盖目标厂商参数（如需嵌套深合并，请提出）；
+2. 一体化请求的 `max_tokens` 是否需要按图片文字量动态上调（当前固定 1024，可在 extra-body 覆盖）；
+3. toast 是否需要显示耗时（建议显示，便于用户判断延迟来源）。
