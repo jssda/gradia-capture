@@ -16,6 +16,12 @@
 
 Includes features like annotations, custom saving options and integration with the [Gradia App from Flathub](https://flathub.org/en/apps/be.alexandervanhee.gradia), including OCR text recognition.
 
+> [!NOTE]
+> **This is an unofficial fork.** It tracks [Alexander Vanhee's gradia-capture](https://github.com/AlexanderVanhee/gradia-capture)
+> and adds GNOME 48 (libadwaita 1.7) support plus a gettext-based Simplified Chinese
+> translation. See [CHANGELOG.md](CHANGELOG.md) for the exact difference from upstream,
+> the baseline commit, and how to update. Upstream remains the authoritative version.
+
 > [!IMPORTANT]
 >  Unlike the Gradia app, this extension is not part of GNOME Circle.
 
