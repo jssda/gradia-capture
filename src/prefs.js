@@ -6,6 +6,7 @@ import GObject from 'gi://GObject';
 import GdkPixbuf from 'gi://GdkPixbuf';
 import { ExtensionPreferences } from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
 import {_} from './i18n.js';
+import { OcrPage } from './prefs/ocrPage.js';
 
 // libadwaita 1.8 (GNOME 49+) moved the shortcut widget to Adw; older libadwaita
 // (Debian 13 / GNOME 48 ships 1.7.x) only has Gtk.ShortcutLabel.
@@ -292,6 +293,7 @@ export default class GradiaPreferences extends ExtensionPreferences {
     fillPreferencesWindow(window) {
         const settings = this.getSettings();
         window.add(new AboutPage(settings));
+        window.add(new OcrPage(settings));
         window.add(new ShortcutsPage());
     }
 }

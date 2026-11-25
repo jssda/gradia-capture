@@ -21,5 +21,67 @@
       <default>true</default>
       <summary>Composite transient windows when capturing a window screenshot</summary>
     </key>
+    <key name="ocr-enabled" type="b">
+      <default>true</default>
+      <summary>Show the OCR button in the screenshot UI</summary>
+    </key>
+    <key name="ocr-provider" type="s">
+      <default>'gradia'</default>
+      <choices>
+        <choice value="gradia"/>
+        <choice value="rapidocr"/>
+        <choice value="llm"/>
+      </choices>
+      <summary>OCR backend</summary>
+    </key>
+    <key name="ocr-llm-enabled" type="b">
+      <default>false</default>
+      <summary>Enable the LLM OCR backend</summary>
+    </key>
+    <key name="ocr-llm-base-url" type="s">
+      <default>''</default>
+      <summary>Base URL of the OpenAI compatible endpoint</summary>
+    </key>
+    <key name="ocr-llm-model" type="s">
+      <default>''</default>
+      <summary>Model name used for LLM OCR</summary>
+    </key>
+    <key name="ocr-llm-api-key" type="s">
+      <default>''</default>
+      <summary>API key for the LLM OCR endpoint (stored in plain text in dconf)</summary>
+    </key>
+    <key name="ocr-llm-api-key-file" type="s">
+      <default>''</default>
+      <summary>File whose first line is used as the API key, takes precedence when set</summary>
+    </key>
+    <key name="ocr-llm-proxy-mode" type="s">
+      <default>'direct'</default>
+      <choices>
+        <choice value="system"/>
+        <choice value="direct"/>
+        <choice value="custom"/>
+      </choices>
+      <summary>Proxy mode for the LLM OCR endpoint</summary>
+    </key>
+    <key name="ocr-llm-proxy-url" type="s">
+      <default>'http://127.0.0.1:12334'</default>
+      <summary>Custom proxy URL for the LLM OCR endpoint</summary>
+    </key>
+    <key name="ocr-llm-timeout-ms" type="i">
+      <default>60000</default>
+      <summary>Network timeout for LLM OCR requests in milliseconds</summary>
+    </key>
+    <key name="ocr-llm-prompt" type="s">
+      <default>''</default>
+      <summary>Custom system prompt for LLM OCR, empty means built-in</summary>
+    </key>
+    <key name="ocr-llm-extra-body" type="s">
+      <default>'{}'</default>
+      <summary>JSON object merged into the request body for vendor specific parameters</summary>
+    </key>
+    <key name="ocr-toast-chars" type="i">
+      <default>200</default>
+      <summary>Characters shown in the OCR result toast, 0 means no truncation</summary>
+    </key>
   </schema>
 </schemalist>
