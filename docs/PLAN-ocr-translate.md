@@ -112,6 +112,7 @@ src/ocr/rapidocr.js       本地 RapidOCR：惰性探测 python，异步子进�
 src/ocr/llm.js            多模态 LLM OCR（OpenAI 兼容）
 src/translate.js          翻译：Google 免 key / LLM
 src/ocr/toast.js          OCR 结果 toast（复用现有样式）
+src/ocr/errors.js         统一错误类型 OcrError（带机器可读的 code）
 src/prefs/ocrPage.js      首选项中的「OCR 与翻译」页面
 python/ocr_helper.py      RapidOCR 命令行助手（打包进扩展）
 scripts/ocr-selftest.sh   自测脚本（三种后端对比，输出表格）
@@ -125,7 +126,7 @@ docs/PLAN-ocr-translate.md 本文件
 | `src/extension.js` | ① 按钮创建条件放宽为 `isGradiaFlatpakInstalled() \|\| ocrEnabled`；② 回调里 `launchGradiaOcrForFile(file)` → `dispatchOcr(file)`（import 1 行） |
 | `src/prefs.js` | 顶部 import 新增页面；`fillPreferencesWindow()` 里追加一行 `window.add(this._ocrPage);`（或等价） |
 | `schemas/org.gnome.shell.extensions.gradia-companion.gschema.xml` | 在既有 `<schema>` 内**追加**新键（不改动已有 5 个键） |
-| `build.sh` | `gnome-extensions pack` 增加 `--extra-source="../python/ocr_helper.py"` |
+| `build.sh` | `gnome-extensions pack` 增加 `--extra-source="ocr"`、`--extra-source="prefs"`（子目录不会被自动打包）和 `--extra-source="../python/ocr_helper.py"` |
 | `po/gradia-capture.pot`、`po/zh_CN.po` | 重新生成/合并，补译新增条目 |
 | `CHANGELOG.md` | 增加“fork 专属功能”小节（注明不进上游 PR） |
 
@@ -172,7 +173,7 @@ export async function requestJson(session, { method, url, headers, json, timeout
 // → { status, data }；失败抛 OcrError
 
 // src/ocr/toast.js
-export function showOcrToast({ text, translation, chars })   // 复用 screenshotToast 的样式类
+export function showOcrToast({ text, translation, chars, ms })   // 复用 screenshotToast 的样式类; ms 显示为耗时
 export function destroyOcrToast()
 ```
 
@@ -239,7 +240,7 @@ Content-Type: application/json
 {
   "model": "<model>",
   "temperature": 0,
-  "max_tokens": 1024,          // 可在 extra-body 覆盖
+  "max_tokens": 2048,          // 可在 extra-body 覆盖 (P0 实测: 思考模式下单次 1344 tokens, 1024 会被截断)
   "messages": [
     { "role": "system", "content": "<内置系统提示词>" },
     { "role": "user", "content": [
@@ -282,6 +283,7 @@ Content-Type: application/json
 - DeepSeek（OpenAI 兼容）：`base_url = https://api.deepseek.com`，`model = deepseek-flash`（支持图片输入，可同时用于 OCR 与翻译）。
 - 其他厂商只要兼容 `/chat/completions` 即可；OCR 要求模型**支持图片输入**，纯文本模型只能用于翻译。
 - 部分厂商默认开启“思考模式”，会增加延迟；可用 `ocr-llm-extra-body` 传厂商参数关闭（具体键名以厂商文档为准）。
+  DeepSeek V4.1 系列经 OpenAI 兼容网关实测：`{"thinking": {"type": "disabled"}}` 有效（单次耗时 3.6–6.5 秒降到 1.3–1.9 秒），`{"enable_thinking": false}` 无效。P0 数据见 `docs/P0-ocr-baseline.md`。
 
 ---
 
@@ -345,7 +347,7 @@ GET https://translate.googleapis.com/translate_a/single
 ## 9. UI 规范
 
 - 复用 `src/screenshotToast.js` 的样式类与结构思路，新建 `src/ocr/toast.js`（不要改动原 toast 组件的行为）；
-- toast 内容：标题（OCR / OCR + 翻译）、原文预览、译文预览、按钮「复制原文」「复制译文」「关闭」；
+- toast 内容：标题（OCR / OCR + 翻译）、耗时（毫秒，P0 决策 D-P0-3）、原文预览、译文预览、按钮「复制原文」「复制译文」「关闭」；
 - 剪贴板：`St.Clipboard.get_default().set_text(St.ClipboardType.CLIPBOARD, str)`；
 - 复制模式 `both` 时写入：`原文 + "\n\n" + 译文`；
 - 长文本按 `ocr-toast-chars` 截断预览（末尾加 `…`），**剪贴板内容不截断**；
@@ -397,7 +399,7 @@ grep -c 'msgstr ""' po/zh_CN.po   # 只应出现在头部
 
 ## 12. 分阶段任务与验收（DoD）
 
-### P0 — 环境与基线数据（0.5–1 小时，不改仓库代码）
+### P0 — 环境与基线数据（0.5–1 小时，不改仓库代码）— 已完成，见 `docs/P0-ocr-baseline.md`
 
 - 建 venv，装 `rapidocr` + `onnxruntime`（清华源）；
 - 写 `python/ocr_helper.py` 原型，能在命令行对 PNG 输出约定 JSON；
@@ -408,7 +410,7 @@ grep -c 'msgstr ""' po/zh_CN.po   # 只应出现在头部
 
 **DoD**：数据表 + 结论；`git status` 干净。
 
-### P1 — LLM OCR 通路（0.5–1 天）
+### P1 — LLM OCR 通路（0.5–1 天）— 代码已完成，待手工验收（Wayland 需注销重登）
 
 范围：`net.js`、`ocr/llm.js`、`ocr/engine.js`（仅 llm 分支）、`ocr/toast.js`、LLM 相关设置键、最小 prefs 页、`extension.js` 两处改动、`build.sh` extra-source。
 
@@ -504,8 +506,26 @@ for f in src/*.js src/ocr/*.js src/prefs/*.js; do cp "$f" /tmp/chk.mjs; node --c
 
 ---
 
-## 16. 待开发方确认的问题（实现前一次性提出）
+## 16. 原待确认问题（P0 后已由需求方拍板）
 
-1. `ocr-llm-extra-body` 是否足以覆盖目标厂商参数（如需嵌套深合并，请提出）；
-2. 一体化请求的 `max_tokens` 是否需要按图片文字量动态上调（当前固定 1024，可在 extra-body 覆盖）；
-3. toast 是否需要显示耗时（建议显示，便于用户判断延迟来源）。
+1. `ocr-llm-extra-body` 浅合并已足够（P0 实测 `{"thinking": {"type": "disabled"}}` 生效），不需要深合并；
+2. `max_tokens` 默认值 1024 → **2048**；
+3. toast **显示耗时**。
+
+## 17. P0 决策记录（2026-11-25，需求方确认）
+
+数据依据：`docs/P0-ocr-baseline.md`。
+
+| 编号 | 决策 |
+|---|---|
+| D-P0-1 | 主推 LLM OCR（文档与首选项说明推荐）；`ocr-provider` 默认值维持 `gradia`，不改第 5 节默认值 |
+| D-P0-2 | LLM 请求默认 `max_tokens` 改为 2048（含一体化模式） |
+| D-P0-3 | `showOcrToast` 显示本次耗时 |
+| D-P0-4 | P0 评估与 P1 手工验收使用本机 OpenAI 兼容网关（仅本机，配置不入库，不预填） |
+| D-P0-5 | P0 样本截图不入库，保留在本机 `~/.local/share/gradia-capture/p0-samples/` |
+
+P0 期间发现、需要在实现中吸收的差异（已回写到相关小节）：
+
+- RapidOCR 3.10 模型随 wheel 自带，无下载；但每次子进程调用 3.5–4.5 秒（本机 4 核 CPU），P3 DoD 的延迟预期需按实测修正；
+- 思考模式会挤占 `max_tokens` 并显著增加延迟，文档示例给出关闭方式（不预填）；
+- 解析层需处理 `finish_reason == 'length'` 或空 `content` 的截断情况，给出可操作错误。
