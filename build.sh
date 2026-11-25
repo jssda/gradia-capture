@@ -15,6 +15,9 @@ gnome-extensions pack src \
     --extra-source="README.md" \
     $(find src -maxdepth 1 -name '*.js' ! -name 'extension.js' -printf '--extra-source=%f ') \
     --extra-source="../icons" \
+    --extra-source="ocr" \
+    --extra-source="prefs" \
+    --extra-source="../python/ocr_helper.py" \
     --podir="../po" \
     --gettext-domain="gradia-capture" \
     --schema="../schemas/org.gnome.shell.extensions.gradia-companion.gschema.xml"

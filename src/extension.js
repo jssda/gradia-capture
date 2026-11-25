@@ -11,7 +11,8 @@ import { TOOLS, TOOL_SHORTCUTS } from './tools.js';
 import { GradiaSettings } from './settings.js';
 import { captureAndStoreScreenshot } from './screenshotStore.js';
 import { ResolutionOverlay } from './resolutionOverlay.js';
-import { isGradiaFlatpakInstalled, createOcrButton, createSettingsButton, launchGradiaOcrForFile, setOcrButtonEnabled } from './gradiaIntegration.js';
+import { createOcrButton, createSettingsButton, setOcrButtonEnabled } from './gradiaIntegration.js';
+import { dispatchOcr } from './ocr/engine.js';
 import { destroyActiveToast } from './screenshotToast.js';
 import { SelectionClearer } from './selectionClearer.js';
 import {_} from './i18n.js';
@@ -1261,12 +1262,13 @@ export default class GradiaCompanion extends Extension {
                 canvas.clear();
         });
 
-        if (isGradiaFlatpakInstalled()) {
+        // 方案第 5 节: ocr-enabled 关闭后即使装了 Gradia 也不显示 OCR 按钮
+        if (this._settings.get_boolean('ocr-enabled')) {
             const ui = Main.screenshotUI;
             this._ocrButton = createOcrButton(async () => {
                 const file = await this._captureScreenshot({ ocr: true });
                 Main.screenshotUI.close();
-                launchGradiaOcrForFile(file);
+                await dispatchOcr(file, { settings: this._settings });
             });
             ui._showPointerButtonContainer.insert_child_below(this._ocrButton, ui._showPointerButton);
         }
