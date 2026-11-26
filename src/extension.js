@@ -408,6 +408,9 @@ export default class GradiaCompanion extends Extension {
         Main.screenshotUI.open = async function (mode = 0, ...rest) {
             self._portalMode = (mode === 2);
             const result = await self._originalOpen(mode, ...rest);
+            // 录屏进行中时 shell 的 open() 会直接返回 (原生限制), 此时不能挂 UI
+            if (!Main.screenshotUI.visible)
+                return result;
             self._ensureUI();
             return result;
         };
