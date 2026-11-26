@@ -171,9 +171,5 @@
       </choices>
       <summary>What is written to the clipboard</summary>
     </key>
-    <key name="ocr-toast-chars" type="i">
-      <default>200</default>
-      <summary>Characters shown in the OCR result toast, 0 means no truncation</summary>
-    </key>
   </schema>
 </schemalist>

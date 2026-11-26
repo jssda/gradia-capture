@@ -4,155 +4,382 @@ import Pango from 'gi://Pango';
 import St from 'gi://St';
 
 import * as Animation from 'resource:///org/gnome/shell/ui/animation.js';
+import * as BoxPointer from 'resource:///org/gnome/shell/ui/boxpointer.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
+
+import {languageLabel, TARGET_LANGUAGES} from './languages.js';
 import {_} from '../i18n.js';
 
-const TOAST_WIDTH = 380;
-const TOAST_MARGIN = 18;
+const PANEL_PADDING = 16;
+const PANEL_GAP = 16;
+const PANEL_WIDTH_MAX = 940;
+const PANEL_WIDTH_MIN = 620;
+const PANEL_MARGIN = 24;
+const PANEL_MARGIN_TOP = 56;
+const COLUMN_HEIGHT_MAX = 360;
 const ANIMATION_TIME = 160;
-const AUTO_HIDE_TIMEOUT = 12000;
-const PADDING = 14;
-// 即使 ocr-toast-chars=0 (不截断), 预览也最多展示 2000 字符:
-// 否则超长文本会把 toast 撑出屏幕, 关闭按钮点不到. 剪贴板内容始终完整.
-const MAX_PREVIEW_CHARS = 2000;
 
-let _activeToast = null;
+const ENGINE_LABELS = {
+    gradia: () => _('Gradia app'),
+    rapidocr: () => _('RapidOCR (local engine)'),
+    llm: () => _('LLM'),
+};
+
+const TRANSLATE_LABELS = {
+    none: () => _('No translation'),
+    google: () => _('Google Translate'),
+    llm: () => _('LLM'),
+};
+
+let _activePanel = null;
 let _busyToast = null;
 
-function _truncate(text, chars) {
-    const limit = chars > 0 ? Math.min(chars, MAX_PREVIEW_CHARS) : MAX_PREVIEW_CHARS;
-    const points = Array.from(text);
-    if (points.length <= limit)
-        return text;
-    return `${points.slice(0, limit).join('')}…`;
+function _sectionTitle(text) {
+    return new St.Label({
+        text,
+        style: 'font-size: 11px; font-weight: bold; opacity: 0.6;',
+    });
 }
 
-class OcrToast {
-    constructor({ text = '', translation = null, chars = 200, ms = 0, notice = null }) {
-        this._timeoutId = 0;
+// 选项按钮 + 下拉菜单 (shell 的 PopupMenu)
+class Selector {
+    constructor(panel, label, items, onSelect, side = St.Side.BOTTOM) {
+        this._panel = panel;
+        this._onSelect = onSelect;
+
+        this.button = new St.Button({
+            style_class: 'gradia-pill-button gradia-osd-button',
+            child: new St.Label({text: label, y_align: Clutter.ActorAlign.CENTER}),
+            reactive: true,
+            y_align: Clutter.ActorAlign.CENTER,
+        });
+
+        this._menu = new PopupMenu.PopupMenu(this.button, 0.0, side);
+        this._menu.actor.hide();
+        Main.uiGroup.add_child(this._menu.actor);
+        this._manager = new PopupMenu.PopupMenuManager(this.button);
+        this._manager.addMenu(this._menu);
+        panel._addMenu(this._menu);
+
+        for (const item of items)
+            this._menu.addAction(item.label, () => this._onSelect(item.id));
+
+        this.button.connect('clicked', () => {
+            if (!this._panel._busy)
+                this._menu.open(BoxPointer.PopupAnimation.FULL);
+        });
+    }
+
+    setLabel(text) {
+        this.button.get_child().text = text;
+    }
+
+    destroy() {
+        this._menu.destroy();
+    }
+}
+
+class OcrResultPanel {
+    constructor({text = '', translation = null, ms = 0, notice = null, engine = 'llm',
+        translateProvider = 'none', targetLang = 'zh-CN', onRerun = null, settings = null} = {}) {
+        this._engine = engine;
+        this._translateProvider = translateProvider;
+        this._targetLang = targetLang;
+        this._onRerun = onRerun;
+        this._settings = settings;
+        this._text = text;
+        this._translation = translation;
+        this._ms = ms;
+        this._notice = notice;
+        this._busy = false;
+        this._destroyed = false;
+        this._menus = [];
         this._signalIds = [];
+
+        const monitor = Main.layoutManager.primaryMonitor;
+        const monitorWidth = monitor?.width ?? 1280;
+        const monitorHeight = monitor?.height ?? 800;
+        this._width = Math.min(PANEL_WIDTH_MAX, Math.max(PANEL_WIDTH_MIN, monitorWidth - PANEL_MARGIN * 2));
+        this._columnHeight = Math.min(COLUMN_HEIGHT_MAX, Math.max(160, monitorHeight * 0.40));
 
         this._container = new St.BoxLayout({
             vertical: true,
             reactive: true,
-            track_hover: true,
             style: `
-                spacing: 8px;
+                spacing: 10px;
+                padding: ${PANEL_PADDING}px;
                 background-color: #222226;
                 border: 1px solid #3a3a3d;
-                border-radius: 12px;
-                padding: ${PADDING}px;
-                box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+                border-radius: 14px;
+                box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
             `,
         });
-        this._container.set_width(TOAST_WIDTH);
+        this._container.set_width(this._width);
 
-        const header = new St.BoxLayout({ vertical: false, style: 'spacing: 8px;' });
-        const title = new St.Label({
-            text: translation ? _('OCR + Translation') : _('OCR'),
-            y_align: Clutter.ActorAlign.CENTER,
+        this._buildHeader();
+        this._buildSelectors();
+        this._contentBox = new St.BoxLayout({vertical: false, style: `spacing: ${PANEL_GAP}px;`});
+        this._container.add_child(this._contentBox);
+        this._buildNotice();
+        this._buildButtons();
+        this._render();
+
+        this._addToStage();
+    }
+
+    _buildHeader() {
+        const header = new St.BoxLayout({vertical: false, style: 'spacing: 10px;'});
+
+        this._titleLabel = new St.Label({
+            text: _('OCR') + ' / ' + _('OCR + Translation'),
             x_expand: true,
-            style: 'font-weight: bold; font-size: 14px;',
+            y_align: Clutter.ActorAlign.CENTER,
+            style: 'font-size: 15px; font-weight: bold;',
         });
-        header.add_child(title);
+        header.add_child(this._titleLabel);
 
-        if (ms > 0) {
-            header.add_child(new St.Label({
-                text: `${_('Time')}: ${ms} ms`,
-                y_align: Clutter.ActorAlign.CENTER,
-                style: 'font-size: 12px; opacity: 0.7;',
-            }));
-        }
+        this._msLabel = new St.Label({
+            y_align: Clutter.ActorAlign.CENTER,
+            style: 'font-size: 12px; opacity: 0.7;',
+        });
+        header.add_child(this._msLabel);
 
         const closeButton = new St.Button({
             style_class: 'gradia-circle-button gradia-selection-trash',
-            child: new St.Icon({ icon_name: 'window-close-symbolic', style: 'icon-size: 14px;' }),
+            child: new St.Icon({icon_name: 'window-close-symbolic', style: 'icon-size: 14px;'}),
             reactive: true,
             y_align: Clutter.ActorAlign.CENTER,
         });
         closeButton.set_size(28, 28);
         this._signalIds.push([closeButton, closeButton.connect('clicked', () => this.destroy())]);
         header.add_child(closeButton);
+
         this._container.add_child(header);
+    }
 
-        this._container.add_child(this._makeSection(_('Original Text'), _truncate(text, chars)));
+    _buildSelectors() {
+        const row = new St.BoxLayout({vertical: false, style: 'spacing: 8px;'});
 
-        if (translation)
-            this._container.add_child(this._makeSection(_('Translation'), _truncate(translation, chars)));
+        row.add_child(_sectionTitle(_('OCR engine')));
+        this._engineSelector = new Selector(this,
+            ENGINE_LABELS[this._engine]?.() ?? this._engine,
+            [
+                {id: 'rapidocr', label: _('RapidOCR (local engine)')},
+                {id: 'llm', label: _('LLM')},
+            ],
+            id => this._selectEngine(id));
+        row.add_child(this._engineSelector.button);
 
-        if (notice) {
-            const noticeLabel = new St.Label({
-                text: notice,
-                x_expand: true,
-                style: 'font-size: 12px; color: #f5a623;',
+        this._translateTitle = _sectionTitle(_('Translation'));
+        row.add_child(this._translateTitle);
+        this._translateSelector = new Selector(this,
+            TRANSLATE_LABELS[this._translateProvider]?.() ?? this._translateProvider,
+            [
+                {id: 'none', label: _('No translation')},
+                {id: 'google', label: _('Google Translate')},
+                {id: 'llm', label: _('LLM')},
+            ],
+            id => this._selectTranslateProvider(id));
+        row.add_child(this._translateSelector.button);
+
+        this._langTitle = _sectionTitle(_('Target language'));
+        row.add_child(this._langTitle);
+        this._langSelector = new Selector(this,
+            languageLabel(this._targetLang),
+            TARGET_LANGUAGES.map(lang => ({id: lang.id, label: lang.label})),
+            id => this._selectTargetLang(id));
+        row.add_child(this._langSelector.button);
+
+        const spacer = new St.Widget({x_expand: true});
+        row.add_child(spacer);
+
+        if (this._onRerun) {
+            this._rerunButton = new St.Button({
+                style_class: 'gradia-pill-button gradia-osd-button',
+                child: new St.Label({text: _('Recognize again'), y_align: Clutter.ActorAlign.CENTER}),
+                reactive: true,
+                y_align: Clutter.ActorAlign.CENTER,
             });
-            noticeLabel.clutter_text.line_wrap = true;
-            noticeLabel.clutter_text.line_wrap_mode = Pango.WrapMode.WORD_CHAR;
-            this._container.add_child(noticeLabel);
+            this._signalIds.push([this._rerunButton, this._rerunButton.connect('clicked', () => {
+                if (!this._busy)
+                    this._rerun();
+            })]);
+            row.add_child(this._rerunButton);
         }
 
-        const buttons = new St.BoxLayout({ vertical: false, style: 'spacing: 8px; margin-top: 2px;' });
-        this._addCopyButton(buttons, _('Copy Original'), text);
-        if (translation)
-            this._addCopyButton(buttons, _('Copy Translation'), translation);
+        this._container.add_child(row);
+    }
 
-        const hideButton = new St.Button({
+    _buildNotice() {
+        this._noticeLabel = new St.Label({
+            x_expand: true,
+            style: 'font-size: 12px; color: #f5a623;',
+        });
+        this._noticeLabel.clutter_text.line_wrap = true;
+        this._noticeLabel.clutter_text.line_wrap_mode = Pango.WrapMode.WORD_CHAR;
+        this._container.add_child(this._noticeLabel);
+    }
+
+    _buildButtons() {
+        this._buttonsBox = new St.BoxLayout({vertical: false, style: 'spacing: 8px;'});
+
+        this._copyTextButton = this._makeButton(_('Copy Original'), () => {
+            St.Clipboard.get_default().set_text(St.ClipboardType.CLIPBOARD, this._text);
+            this.destroy();
+        });
+        this._buttonsBox.add_child(this._copyTextButton);
+
+        this._copyTranslationButton = this._makeButton(_('Copy Translation'), () => {
+            St.Clipboard.get_default().set_text(St.ClipboardType.CLIPBOARD, this._translation ?? '');
+            this.destroy();
+        });
+        this._buttonsBox.add_child(this._copyTranslationButton);
+
+        const closeButton = this._makeButton(_('Close'), () => this.destroy());
+        this._buttonsBox.add_child(closeButton);
+
+        this._container.add_child(this._buttonsBox);
+    }
+
+    _makeButton(label, onClick) {
+        const button = new St.Button({
             style_class: 'gradia-pill-button gradia-osd-button',
-            child: new St.Label({ text: _('Close'), y_align: Clutter.ActorAlign.CENTER }),
+            child: new St.Label({text: label, y_align: Clutter.ActorAlign.CENTER}),
             reactive: true,
             x_expand: true,
         });
-        this._signalIds.push([hideButton, hideButton.connect('clicked', () => this.destroy())]);
-        buttons.add_child(hideButton);
-        this._container.add_child(buttons);
-
-        this._signalIds.push([this._container, this._container.connect('notify::hover', () => {
-            if (this._container.hover)
-                this._clearTimeout();
-            else
-                this._scheduleHide();
-        })]);
-
-        this._addToStage();
-        this._scheduleHide();
+        this._signalIds.push([button, button.connect('clicked', onClick)]);
+        return button;
     }
 
-    _makeSection(title, body) {
-        const box = new St.BoxLayout({ vertical: true, style: 'spacing: 2px;' });
-        box.add_child(new St.Label({
-            text: title,
-            style: 'font-size: 11px; font-weight: bold; opacity: 0.6;',
-        }));
-        const bodyLabel = new St.Label({
-            text: body,
+    _render() {
+        this._titleLabel.text = this._translation ? `${_('OCR')} / ${_('OCR + Translation')}` : _('OCR');
+        this._msLabel.text = this._ms > 0 ? `${_('Time')}: ${this._ms} ms` : '';
+
+        this._translateTitle.visible = true;
+        this._translateSelector.button.visible = true;
+
+        const hasTranslation = !!this._translation;
+        this._langTitle.visible = hasTranslation;
+
+        this._contentBox.destroy_all_children();
+
+        const columnWidth = hasTranslation
+            ? Math.round((this._width - PANEL_PADDING * 2 - PANEL_GAP) / 2)
+            : this._width - PANEL_PADDING * 2;
+
+        this._contentBox.add_child(this._buildColumn(_('Original Text'), this._text, columnWidth));
+        if (hasTranslation)
+            this._contentBox.add_child(this._buildColumn(_('Translation'), this._translation, columnWidth));
+
+        this._copyTranslationButton.visible = hasTranslation;
+        this._noticeLabel.text = this._notice ?? '';
+        this._noticeLabel.visible = !!this._notice;
+    }
+
+    _buildColumn(title, body, width) {
+        const box = new St.BoxLayout({vertical: true, style: 'spacing: 4px;'});
+        box.add_child(_sectionTitle(title));
+
+        const label = new St.Label({
+            text: body ?? '',
             style: 'font-size: 13px;',
             x_expand: true,
         });
-        // StLabel 没有 line_wrap 属性, 换行要设在内部的 Clutter.Text 上
-        bodyLabel.clutter_text.line_wrap = true;
-        bodyLabel.clutter_text.line_wrap_mode = Pango.WrapMode.WORD_CHAR;
-        box.add_child(bodyLabel);
+        label.clutter_text.line_wrap = true;
+        label.clutter_text.line_wrap_mode = Pango.WrapMode.WORD_CHAR;
+        label.set_width(Math.max(120, width - 16));
+
+        // St.ScrollView 的子节点必须实现 St.Scrollable, St.Label 不行, 外面包一层 BoxLayout
+        const content = new St.BoxLayout({
+            vertical: true,
+            style: 'padding: 8px;',
+            x_expand: true,
+        });
+        content.add_child(label);
+        content.set_width(width);
+
+        const scroll = new St.ScrollView({
+            hscrollbar_policy: St.PolicyType.NEVER,
+            vscrollbar_policy: St.PolicyType.AUTOMATIC,
+            child: content,
+            style: 'background-color: rgba(255, 255, 255, 0.04); border-radius: 8px;',
+        });
+        scroll.set_size(width, this._columnHeight);
+
+        box.add_child(scroll);
         return box;
     }
 
-    _addCopyButton(parent, label, value) {
-        const button = new St.Button({
-            style_class: 'gradia-pill-button gradia-osd-button',
-            child: new St.Label({ text: label, y_align: Clutter.ActorAlign.CENTER }),
-            reactive: true,
-            x_expand: true,
-        });
-        this._signalIds.push([button, button.connect('clicked', () => {
-            St.Clipboard.get_default().set_text(St.ClipboardType.CLIPBOARD, value);
-            const child = button.get_child();
-            child.text = _('Copied!');
-            GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 2, () => {
-                if (button.get_child())
-                    child.text = label;
-                return GLib.SOURCE_REMOVE;
+    _selectEngine(id) {
+        this._engine = id;
+        this._engineSelector.setLabel(ENGINE_LABELS[id]?.() ?? id);
+        if (this._settings)
+            this._settings.set_string('ocr-provider', id);
+    }
+
+    _selectTranslateProvider(id) {
+        this._translateProvider = id;
+        this._translateSelector.setLabel(TRANSLATE_LABELS[id]?.() ?? id);
+        if (this._settings)
+            this._settings.set_string('translate-provider', id);
+    }
+
+    _selectTargetLang(id) {
+        this._targetLang = id;
+        this._langSelector.setLabel(languageLabel(id));
+        if (this._settings)
+            this._settings.set_string('translate-target-lang', id);
+    }
+
+    async _rerun() {
+        if (!this._onRerun || this._busy || this._destroyed)
+            return;
+
+        this._busy = true;
+        this._setControlsSensitive(false);
+        this._notice = _('Recognizing…');
+        this._noticeLabel.text = this._notice;
+        this._noticeLabel.visible = true;
+
+        try {
+            const result = await this._onRerun({
+                ocrProvider: this._engine,
+                translateProvider: this._translateProvider,
+                targetLang: this._targetLang,
             });
-        })]);
-        parent.add_child(button);
+            if (!result || this._destroyed)
+                return;
+            this._text = result.text ?? '';
+            this._translation = result.translation ?? null;
+            this._ms = result.ms?.total ?? 0;
+            this._engine = result.engine ?? this._engine;
+            this._notice = result.notice ?? null;
+            this._render();
+        } catch (e) {
+            if (this._destroyed)
+                return;
+            this._notice = e.message ?? String(e);
+            this._noticeLabel.text = this._notice;
+            this._noticeLabel.visible = true;
+        } finally {
+            this._busy = false;
+            if (!this._destroyed)
+                this._setControlsSensitive(true);
+        }
+    }
+
+    _setControlsSensitive(sensitive) {
+        this._engineSelector.button.reactive = sensitive;
+        this._translateSelector.button.reactive = sensitive;
+        this._langSelector.button.reactive = sensitive;
+        if (this._rerunButton)
+            this._rerunButton.reactive = sensitive;
+    }
+
+    _addMenu(menu) {
+        this._menus.push(menu);
     }
 
     _addToStage() {
@@ -162,10 +389,10 @@ class OcrToast {
         if (!monitor)
             return;
 
-        const [, naturalHeight] = this._container.get_preferred_height(TOAST_WIDTH);
-        const targetX = monitor.x + monitor.width - TOAST_WIDTH - TOAST_MARGIN;
-        const targetY = monitor.y + monitor.height - naturalHeight - TOAST_MARGIN;
-        const hiddenY = monitor.y + monitor.height + 10;
+        const [, naturalHeight] = this._container.get_preferred_height(this._width);
+        const targetX = monitor.x + Math.round((monitor.width - this._width) / 2);
+        const targetY = monitor.y + PANEL_MARGIN_TOP;
+        const hiddenY = targetY - naturalHeight - 20;
 
         this._container.set_position(targetX, hiddenY);
         this._container.opacity = 0;
@@ -179,37 +406,29 @@ class OcrToast {
         });
     }
 
-    _scheduleHide() {
-        this._clearTimeout();
-        this._timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, AUTO_HIDE_TIMEOUT, () => {
-            this._timeoutId = 0;
-            this.destroy();
-            return GLib.SOURCE_REMOVE;
-        });
-    }
-
-    _clearTimeout() {
-        if (this._timeoutId) {
-            GLib.source_remove(this._timeoutId);
-            this._timeoutId = 0;
-        }
-    }
-
     destroy() {
-        this._clearTimeout();
+        if (this._destroyed)
+            return;
+        this._destroyed = true;
+
+        if (_activePanel === this)
+            _activePanel = null;
+
         for (const [obj, id] of this._signalIds)
             obj.disconnect(id);
         this._signalIds = [];
 
-        if (_activeToast === this)
-            _activeToast = null;
+        for (const menu of this._menus)
+            menu.destroy();
+        this._menus = [];
 
         if (!this._container)
             return;
         const container = this._container;
         this._container = null;
+
         container.ease({
-            y: container.y + 20,
+            y: container.y - 20,
             opacity: 0,
             duration: ANIMATION_TIME,
             mode: Clutter.AnimationMode.EASE_IN_QUAD,
@@ -221,17 +440,17 @@ class OcrToast {
     }
 }
 
-export function showOcrToast({ text, translation = null, chars = 200, ms = 0, notice = null } = {}) {
+export function showOcrToast(options = {}) {
     destroyOcrToast();
-    _activeToast = new OcrToast({ text, translation, chars, ms, notice });
+    _activePanel = new OcrResultPanel(options);
 }
 
 export function destroyOcrToast() {
-    _activeToast?.destroy();
-    _activeToast = null;
+    _activePanel?.destroy();
+    _activePanel = null;
 }
 
-// OCR 期间的轻量提示: 截图界面关闭后立即出现, 让用户知道正在识别, 而不是干等.
+// OCR/翻译期间的轻量提示: 截图界面关闭后立即出现, 让用户知道正在识别, 而不是干等.
 export function showOcrBusyToast(message = null) {
     destroyOcrBusyToast();
 
@@ -248,8 +467,7 @@ export function showOcrBusyToast(message = null) {
         `,
     });
 
-    // St 没有 Spinner 类, 用 shell 自带的 Spinner 组件
-    const spinner = new Animation.Spinner(16, { animate: true });
+    const spinner = new Animation.Spinner(16, {animate: true});
     spinner.play();
     container.add_child(spinner);
     container.add_child(new St.Label({

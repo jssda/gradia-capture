@@ -1272,7 +1272,7 @@ export default class GradiaCompanion extends Extension {
                 const file = await this._captureScreenshot({ ocr: true });
                 Main.screenshotUI.close();
                 await dispatchOcr(file, { settings: this._settings, extensionPath: this.path });
-            });
+            }, _('Extract Text'));
             ui._showPointerButtonContainer.insert_child_below(this._ocrButton, ui._showPointerButton);
         }
 

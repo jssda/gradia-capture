@@ -178,3 +178,22 @@
     font-weight: 700;
     padding: 14px 24px;
 }
+
+.gradia-ocr-pill {
+    padding: 6px 14px;
+    min-height: 0px;
+    border-radius: 9999px;
+    background-color: rgba(0, 0, 0, 0.55);
+    color: #ffffff;
+    font-size: 13px;
+    font-weight: bold;
+    spacing: 6px;
+}
+
+.gradia-ocr-pill:hover {
+    background-color: rgba(0, 0, 0, 0.7);
+}
+
+.gradia-ocr-pill:active {
+    background-color: rgba(0, 0, 0, 0.85);
+}

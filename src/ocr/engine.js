@@ -30,10 +30,14 @@ const ERROR_TITLES = {
     LLM_TRUNCATED: N_('The model output was truncated. Disable thinking mode in the extra body ({"thinking": {"type": "disabled"}}) or raise max_tokens.'),
     LLM_EMPTY: N_('The model returned no text. Check that the model supports image input.'),
     LLM_BAD_JSON: N_('The model returned unexpected JSON. The original text is still available.'),
-    NET_TIMEOUT: N_('The OCR request timed out. Check the network and proxy settings.'),
-    NET_HTTP: N_('The OCR service returned an HTTP error. Check the base URL, model name and API key.'),
-    NET_UNREACHABLE: N_('Cannot reach the OCR service. Check the base URL and network connection.'),
-    NET_BAD_JSON: N_('The OCR service returned an invalid response.'),
+    NET_TIMEOUT: N_('The request timed out.'),
+    NET_HTTP: N_('The service returned an HTTP error.'),
+    NET_UNREACHABLE: N_('Cannot reach the service. Check the base URL, network and proxy settings.'),
+    NET_BAD_JSON: N_('The service returned an invalid response.'),
+    TRANSLATE_NOT_CONFIGURED: N_('The translation backend is not configured.'),
+    TRANSLATE_BAD_RESPONSE: N_('The translation service returned an unexpected response.'),
+    TRANSLATE_EMPTY: N_('The translation is empty.'),
+    TRANSLATE_PROVIDER: N_('Unknown translation provider.'),
     OCR_ENV_MISSING: N_('RapidOCR is not installed. Create the Python virtual environment as described in the documentation.'),
     OCR_TIMEOUT: N_('RapidOCR timed out. Select a smaller area or increase the timeout in Settings.'),
     OCR_EMPTY: N_('No text was recognized in the selection.'),
@@ -154,13 +158,28 @@ function _copyToClipboard(text) {
     St.Clipboard.get_default().set_text(St.ClipboardType.CLIPBOARD, text);
 }
 
+function errorText(code) {
+    if (code in ERROR_TITLES)
+        return _(ERROR_TITLES[code]);
+    return _('OCR failed.');
+}
+
+function _translationNotice(result) {
+    if (result.translationError) {
+        const reason = errorText(result.translationError);
+        return _('Translation failed (%s). The original text is still available.').replace('%s', reason);
+    }
+    if (result.warnings.includes('TRANSLATE_TRUNCATED'))
+        return _('The text was too long; only the first part was translated.');
+    return null;
+}
+
 function _notifyError(error) {
     const code = error?.code ?? 'OCR_FAILED';
-    const message = code in ERROR_TITLES ? _(ERROR_TITLES[code]) : (error?.message ?? String(error));
     console.error(`[gradia-capture] OCR failed: ${code} | ${error?.message ?? ''} | ${error?.detail ?? ''}`);
     if (!(error instanceof OcrError))
         console.error(error?.stack ?? String(error));
-    Main.notify(_('OCR failed'), message);
+    Main.notify(_('OCR failed'), errorText(code));
 }
 
 async function _runLlmOcr(file, settings, { integrated = false, targetLang = 'zh-CN' } = {}) {
@@ -207,8 +226,7 @@ async function _runRapidOcr(file, settings, extensionPath) {
     };
 }
 
-async function _translateResult(settings, result, provider) {
-    const targetLang = settings.get_string('translate-target-lang');
+async function _translateResult(settings, result, provider, targetLang) {
     const started = GLib.get_monotonic_time();
     try {
         const profile = _translationProfile(settings, provider);
@@ -228,12 +246,58 @@ async function _translateResult(settings, result, provider) {
     }
 }
 
-function _translationNotice(result) {
-    if (result.translationError)
-        return _('Translation failed. The original text is still available.');
-    if (result.warnings.includes('TRANSLATE_TRUNCATED'))
-        return _('The text was too long; only the first part was translated.');
-    return null;
+// 执行一次 OCR + 可选翻译, 不写剪贴板、不弹面板; 失败抛 OcrError.
+// overrides 用于结果面板里的引擎/语言切换.
+export async function runOcr(file, {
+    settings,
+    extensionPath = null,
+    ocrProvider = null,
+    translateProvider = null,
+    targetLang = null,
+} = {}) {
+    const provider = ocrProvider ?? settings.get_string('ocr-provider');
+    const tProvider = translateProvider ?? _translationProvider(settings);
+    const lang = targetLang ?? settings.get_string('translate-target-lang');
+
+    if (provider === PROVIDER_GRADIA) {
+        if (!isGradiaFlatpakInstalled())
+            throw new OcrError('GRADIA_MISSING', 'Gradia app is not installed');
+        launchGradiaOcrForFile(file);
+        return {
+            engine: PROVIDER_GRADIA,
+            text: '',
+            translation: null,
+            ms: { ocr: 0, translate: 0, total: 0 },
+            warnings: [],
+        };
+    }
+
+    if (!file)
+        throw new OcrError('OCR_FAILED', 'No screenshot file');
+
+    // 一体化 (D7): OCR 与翻译都用 LLM 且继承配置时, 只发一次请求
+    const integrated = provider === PROVIDER_LLM &&
+        tProvider === TRANSLATE_LLM &&
+        settings.get_boolean('translate-llm-inherit');
+
+    let result;
+    if (provider === PROVIDER_LLM)
+        result = await _runLlmOcr(file, settings, { integrated, targetLang: lang });
+    else if (provider === PROVIDER_RAPIDOCR)
+        result = await _runRapidOcr(file, settings, extensionPath);
+    else
+        throw new OcrError('PROVIDER_NOT_READY', `Unknown provider: ${provider}`);
+
+    if (!integrated && tProvider !== TRANSLATE_NONE)
+        await _translateResult(settings, result, tProvider, lang);
+
+    return result;
+}
+
+function _busyMessage(provider, translateProvider) {
+    if (translateProvider !== TRANSLATE_NONE)
+        return _('Recognizing text and translating…');
+    return provider === PROVIDER_RAPIDOCR ? _('Running local OCR…') : _('Recognizing text…');
 }
 
 // OCR 入口: 按 ocr-provider 派发; 所有失败都转成可操作通知, 不向调用方抛异常.
@@ -270,40 +334,36 @@ export async function dispatchOcr(file, opts = {}) {
         return null;
     }
 
-    // 一体化 (D7): OCR 与翻译都用 LLM 且继承配置时, 只发一次请求
-    const integrated = provider === PROVIDER_LLM &&
-        translateProvider === TRANSLATE_LLM &&
-        settings.get_boolean('translate-llm-inherit');
-
-    const busyMessage = translateProvider === TRANSLATE_NONE
-        ? (provider === PROVIDER_RAPIDOCR ? _('Running local OCR…') : _('Recognizing text…'))
-        : _('Recognizing text and translating…');
-    showOcrBusyToast(busyMessage);
+    const extensionPath = opts.extensionPath ?? null;
+    showOcrBusyToast(_busyMessage(provider, translateProvider));
 
     try {
-        let result;
-        if (provider === PROVIDER_LLM) {
-            result = await _runLlmOcr(file, settings, {
-                integrated,
-                targetLang: settings.get_string('translate-target-lang'),
-            });
-        } else if (provider === PROVIDER_RAPIDOCR) {
-            result = await _runRapidOcr(file, settings, opts.extensionPath);
-        } else {
-            throw new OcrError('PROVIDER_NOT_READY', `Unknown provider: ${provider}`);
-        }
-
-        if (!integrated && translateProvider !== TRANSLATE_NONE)
-            await _translateResult(settings, result, translateProvider);
-
+        const result = await runOcr(file, {settings, extensionPath});
         destroyOcrBusyToast();
         _copyToClipboard(_clipboardText(settings, result));
+
+        const panelResult = {...result, notice: _translationNotice(result)};
         showOcrToast({
-            text: result.text,
-            translation: result.translation,
-            chars: settings.get_int('ocr-toast-chars'),
-            ms: result.ms.total,
-            notice: _translationNotice(result),
+            ...panelResult,
+            translateProvider,
+            targetLang: settings.get_string('translate-target-lang'),
+            settings,
+            onRerun: async selection => {
+                showOcrBusyToast(_busyMessage(selection.ocrProvider, selection.translateProvider));
+                try {
+                    const rerun = await runOcr(file, {
+                        settings,
+                        extensionPath,
+                        ocrProvider: selection.ocrProvider,
+                        translateProvider: selection.translateProvider,
+                        targetLang: selection.targetLang,
+                    });
+                    _copyToClipboard(_clipboardText(settings, rerun));
+                    return {...rerun, notice: _translationNotice(rerun)};
+                } finally {
+                    destroyOcrBusyToast();
+                }
+            },
         });
 
         for (const warning of result.warnings)

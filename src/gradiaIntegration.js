@@ -71,12 +71,22 @@ export function launchGradiaOcrForFile(file) {
     }
 }
 
-export function createOcrButton(onClick) {
+export function createOcrButton(onClick, label = null) {
     const button = new St.Button({
-        style_class: 'screenshot-ui-show-pointer-button',
-        icon_name: 'scanner-symbolic',
+        style_class: 'gradia-ocr-pill',
+        reactive: true,
         toggle_mode: false,
     });
+
+    if (label) {
+        const box = new St.BoxLayout({vertical: false, style: 'spacing: 6px;'});
+        box.add_child(new St.Icon({icon_name: 'scanner-symbolic', style: 'icon-size: 16px;'}));
+        box.add_child(new St.Label({text: label, y_align: Clutter.ActorAlign.CENTER}));
+        button.set_child(box);
+    } else {
+        button.icon_name = 'scanner-symbolic';
+    }
+
     button.connect('clicked', () => onClick());
     attachTooltip(button, _('Extract Text'), St.Side.TOP);
     return button;
