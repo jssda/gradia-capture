@@ -11,6 +11,18 @@ const PROVIDERS = [
     { id: 'llm', label: N_('LLM vision model (OpenAI compatible)') },
 ];
 
+const TRANSLATE_PROVIDERS = [
+    { id: 'none', label: N_('No translation') },
+    { id: 'google', label: N_('Google Translate (free)') },
+    { id: 'llm', label: N_('LLM') },
+];
+
+const COPY_MODES = [
+    { id: 'text', label: N_('Original text only') },
+    { id: 'translation', label: N_('Translation only') },
+    { id: 'both', label: N_('Original and translation') },
+];
+
 const PROXY_MODES = [
     { id: 'system', label: N_('Use system proxy') },
     { id: 'direct', label: N_('Connect directly') },
@@ -30,6 +42,7 @@ export const OcrPage = GObject.registerClass(
             this._buildOcrGroup();
             this._buildRapidOcrGroup();
             this._buildLlmGroup();
+            this._buildTranslationGroup();
             this._buildResultGroup();
 
             this.connect('destroy', () => {
@@ -180,8 +193,59 @@ export const OcrPage = GObject.registerClass(
             this.add(group);
         }
 
+        _buildTranslationGroup() {
+            const group = new Adw.PreferencesGroup({ title: _('Translation') });
+            group.set_description(_('When a translation provider is set, the recognized text is translated before it is shown and copied.'));
+
+            const enableRow = new Adw.SwitchRow({
+                title: _('Enable translation'),
+                subtitle: _('Translate recognized text when a provider is selected'),
+            });
+            this._bind('translate-enabled', enableRow, 'active');
+            group.add(enableRow);
+
+            this._comboRow(group, 'translate-provider', _('Translation provider'),
+                _('Choose how the text is translated'), TRANSLATE_PROVIDERS);
+            this._entryRow(group, 'translate-target-lang', _('Target language'),
+                _('Example: zh-CN, en, ja'));
+
+            const inheritRow = new Adw.SwitchRow({
+                title: _('Reuse the LLM OCR connection'),
+                subtitle: _('Use the LLM OCR base URL, model, key and proxy for translation; with the LLM OCR engine this sends a single combined request'),
+            });
+            this._bind('translate-llm-inherit', inheritRow, 'active');
+            group.add(inheritRow);
+
+            this._entryRow(group, 'translate-llm-base-url', _('Translation base URL'),
+                _('Only used when the configuration is not inherited'));
+            this._entryRow(group, 'translate-llm-model', _('Translation model'),
+                _('Example: deepseek-flash'));
+            this._entryRow(group, 'translate-llm-api-key', _('Translation API key'),
+                _('Stored in plain text in dconf'), { password: true });
+            this._entryRow(group, 'translate-llm-api-key-file', _('Translation API key file'),
+                _('When set, the first line of this file is used instead'));
+            this._comboRow(group, 'translate-llm-proxy-mode', _('Translation proxy'),
+                _('Proxy mode for the translation LLM'), PROXY_MODES);
+            this._entryRow(group, 'translate-llm-proxy-url', _('Translation proxy URL'),
+                _('Only used when the proxy mode is set to custom'));
+            this._spinRow(group, 'translate-llm-timeout-ms', _('Translation timeout'),
+                _('Network timeout in milliseconds'), { lower: 1000, upper: 300000, step: 1000 });
+            this._entryRow(group, 'translate-llm-extra-body', _('Translation extra body'),
+                _('JSON object merged into translation requests'));
+
+            this._comboRow(group, 'google-proxy-mode', _('Google Translate proxy'),
+                _('Google Translate usually needs a proxy'), PROXY_MODES);
+            this._entryRow(group, 'google-proxy-url', _('Google Translate proxy URL'),
+                _('Only used when the custom proxy mode is set'));
+
+            this.add(group);
+        }
+
         _buildResultGroup() {
             const group = new Adw.PreferencesGroup({ title: _('Result') });
+
+            this._comboRow(group, 'ocr-copy-mode', _('Copy to clipboard'),
+                _('What is written to the clipboard after recognition'), COPY_MODES);
 
             this._spinRow(group, 'ocr-toast-chars', _('Preview characters'),
                 _('Characters shown in the result toast, 0 means no truncation'), { lower: 0, upper: 5000, step: 50 });

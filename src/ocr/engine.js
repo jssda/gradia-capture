@@ -7,6 +7,7 @@ import { isGradiaFlatpakInstalled, launchGradiaOcrForFile } from '../gradiaInteg
 import { ocrWithLlm } from './llm.js';
 import { ocrWithRapidOcr, rapidOcrPythonPath } from './rapidocr.js';
 import { destroyOcrBusyToast, showOcrBusyToast, showOcrToast } from './toast.js';
+import { translateText } from '../translate.js';
 import { OcrError } from './errors.js';
 import {_, N_} from '../i18n.js';
 
@@ -15,6 +16,10 @@ const SCHEMA_ID = 'org.gnome.shell.extensions.gradia-companion';
 const PROVIDER_GRADIA = 'gradia';
 const PROVIDER_RAPIDOCR = 'rapidocr';
 const PROVIDER_LLM = 'llm';
+
+const TRANSLATE_GOOGLE = 'google';
+const TRANSLATE_LLM = 'llm';
+const TRANSLATE_NONE = 'none';
 
 const ERROR_TITLES = {
     GRADIA_MISSING: N_('The Gradia app is not installed. Select another OCR engine in Settings → OCR & Translation.'),
@@ -74,6 +79,18 @@ function _llmConfig(settings) {
     };
 }
 
+function _translateLlmConfig(settings) {
+    return {
+        baseUrl: settings.get_string('translate-llm-base-url'),
+        model: settings.get_string('translate-llm-model'),
+        apiKey: settings.get_string('translate-llm-api-key'),
+        apiKeyFile: settings.get_string('translate-llm-api-key-file'),
+        proxyMode: settings.get_string('translate-llm-proxy-mode'),
+        proxyUrl: settings.get_string('translate-llm-proxy-url'),
+        timeoutMs: settings.get_int('translate-llm-timeout-ms'),
+    };
+}
+
 function _parseExtraBody(raw) {
     const text = (raw ?? '').trim();
     if (!text)
@@ -84,6 +101,53 @@ function _parseExtraBody(raw) {
     } catch (e) {
         throw new OcrError('LLM_EXTRA_BODY', 'extra body is not valid JSON');
     }
+}
+
+function _translationProvider(settings) {
+    if (!settings.get_boolean('translate-enabled'))
+        return TRANSLATE_NONE;
+    const provider = settings.get_string('translate-provider');
+    return provider === TRANSLATE_GOOGLE || provider === TRANSLATE_LLM ? provider : TRANSLATE_NONE;
+}
+
+// Google 用 google-proxy-*, LLM 用 translate-llm-*; inherit=true 时复用 OCR 的 LLM 配置 (D6).
+function _translationProfile(settings, provider) {
+    if (provider === TRANSLATE_GOOGLE) {
+        return {
+            proxyMode: settings.get_string('google-proxy-mode'),
+            proxyUrl: settings.get_string('google-proxy-url'),
+        };
+    }
+
+    if (settings.get_boolean('translate-llm-inherit')) {
+        const inherited = _llmConfig(settings);
+        return {
+            baseUrl: inherited.baseUrl,
+            model: inherited.model,
+            apiKey: inherited.apiKey,
+            apiKeyFile: inherited.apiKeyFile,
+            proxyMode: inherited.proxyMode,
+            proxyUrl: inherited.proxyUrl,
+            timeoutMs: inherited.timeoutMs,
+            extraBody: _parseExtraBody(settings.get_string('ocr-llm-extra-body')),
+        };
+    }
+
+    return {
+        ..._translateLlmConfig(settings),
+        extraBody: _parseExtraBody(settings.get_string('translate-llm-extra-body')),
+    };
+}
+
+function _clipboardText(settings, result) {
+    if (!result.translation)
+        return result.text;
+    const mode = settings.get_string('ocr-copy-mode');
+    if (mode === 'translation')
+        return result.translation;
+    if (mode === 'both')
+        return `${result.text}\n\n${result.translation}`;
+    return result.text;
 }
 
 function _copyToClipboard(text) {
@@ -99,7 +163,7 @@ function _notifyError(error) {
     Main.notify(_('OCR failed'), message);
 }
 
-async function _runLlmOcr(file, settings) {
+async function _runLlmOcr(file, settings, { integrated = false, targetLang = 'zh-CN' } = {}) {
     if (!settings.get_boolean('ocr-llm-enabled'))
         throw new OcrError('LLM_DISABLED', 'LLM OCR is not enabled');
 
@@ -110,14 +174,15 @@ async function _runLlmOcr(file, settings) {
     const extraBody = _parseExtraBody(settings.get_string('ocr-llm-extra-body'));
     const bytes = await _readFileBytes(file);
     const started = GLib.get_monotonic_time();
-    const result = await ocrWithLlm(bytes, cfg, { extraBody });
-    const ocrMs = _elapsedMs(started);
+    const result = await ocrWithLlm(bytes, cfg, { translate: integrated, targetLang, extraBody });
+    const totalMs = _elapsedMs(started);
 
     return {
         engine: PROVIDER_LLM,
         text: result.text,
         translation: result.translation,
-        ms: { ocr: ocrMs, translate: 0, total: ocrMs },
+        // 一体化模式只发一次请求, OCR 与翻译的耗时无法拆分, 统一记在 ocr 上
+        ms: { ocr: totalMs, translate: 0, total: totalMs },
         warnings: result.warnings,
         requestId: result.requestId,
     };
@@ -142,11 +207,41 @@ async function _runRapidOcr(file, settings, extensionPath) {
     };
 }
 
+async function _translateResult(settings, result, provider) {
+    const targetLang = settings.get_string('translate-target-lang');
+    const started = GLib.get_monotonic_time();
+    try {
+        const profile = _translationProfile(settings, provider);
+        result.translation = await translateText(result.text, {
+            provider,
+            targetLang,
+            profile,
+            warnings: result.warnings,
+        });
+    } catch (error) {
+        result.translationError = error?.code ?? 'TRANSLATE_FAILED';
+        result.warnings.push('TRANSLATE_FAILED');
+        console.warn(`[gradia-capture] translate failed: ${result.translationError} | ${error?.message ?? ''}`);
+    } finally {
+        result.ms.translate = _elapsedMs(started);
+        result.ms.total += result.ms.translate;
+    }
+}
+
+function _translationNotice(result) {
+    if (result.translationError)
+        return _('Translation failed. The original text is still available.');
+    if (result.warnings.includes('TRANSLATE_TRUNCATED'))
+        return _('The text was too long; only the first part was translated.');
+    return null;
+}
+
 // OCR 入口: 按 ocr-provider 派发; 所有失败都转成可操作通知, 不向调用方抛异常.
 export async function dispatchOcr(file, opts = {}) {
     const settings = _settingsFrom(opts);
     const started = GLib.get_monotonic_time();
     const provider = settings.get_string('ocr-provider');
+    const translateProvider = _translationProvider(settings);
 
     if (provider === PROVIDER_GRADIA) {
         if (!isGradiaFlatpakInstalled()) {
@@ -175,24 +270,40 @@ export async function dispatchOcr(file, opts = {}) {
         return null;
     }
 
-    showOcrBusyToast(provider === PROVIDER_RAPIDOCR ? _('Running local OCR…') : _('Recognizing text…'));
+    // 一体化 (D7): OCR 与翻译都用 LLM 且继承配置时, 只发一次请求
+    const integrated = provider === PROVIDER_LLM &&
+        translateProvider === TRANSLATE_LLM &&
+        settings.get_boolean('translate-llm-inherit');
+
+    const busyMessage = translateProvider === TRANSLATE_NONE
+        ? (provider === PROVIDER_RAPIDOCR ? _('Running local OCR…') : _('Recognizing text…'))
+        : _('Recognizing text and translating…');
+    showOcrBusyToast(busyMessage);
 
     try {
         let result;
-        if (provider === PROVIDER_LLM)
-            result = await _runLlmOcr(file, settings);
-        else if (provider === PROVIDER_RAPIDOCR)
+        if (provider === PROVIDER_LLM) {
+            result = await _runLlmOcr(file, settings, {
+                integrated,
+                targetLang: settings.get_string('translate-target-lang'),
+            });
+        } else if (provider === PROVIDER_RAPIDOCR) {
             result = await _runRapidOcr(file, settings, opts.extensionPath);
-        else
+        } else {
             throw new OcrError('PROVIDER_NOT_READY', `Unknown provider: ${provider}`);
+        }
+
+        if (!integrated && translateProvider !== TRANSLATE_NONE)
+            await _translateResult(settings, result, translateProvider);
 
         destroyOcrBusyToast();
-        _copyToClipboard(result.text);
+        _copyToClipboard(_clipboardText(settings, result));
         showOcrToast({
             text: result.text,
             translation: result.translation,
             chars: settings.get_int('ocr-toast-chars'),
             ms: result.ms.total,
+            notice: _translationNotice(result),
         });
 
         for (const warning of result.warnings)

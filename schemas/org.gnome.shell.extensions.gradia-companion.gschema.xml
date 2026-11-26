@@ -91,6 +91,86 @@
       <default>'{}'</default>
       <summary>JSON object merged into the request body for vendor specific parameters</summary>
     </key>
+    <key name="translate-enabled" type="b">
+      <default>true</default>
+      <summary>Translate the recognized text when a translation provider is set</summary>
+    </key>
+    <key name="translate-provider" type="s">
+      <default>'none'</default>
+      <choices>
+        <choice value="none"/>
+        <choice value="google"/>
+        <choice value="llm"/>
+      </choices>
+      <summary>Translation backend</summary>
+    </key>
+    <key name="translate-target-lang" type="s">
+      <default>'zh-CN'</default>
+      <summary>Target language for translation</summary>
+    </key>
+    <key name="translate-llm-inherit" type="b">
+      <default>true</default>
+      <summary>Reuse the LLM OCR connection settings for LLM translation</summary>
+    </key>
+    <key name="translate-llm-base-url" type="s">
+      <default>''</default>
+      <summary>Base URL used when the translation LLM settings are not inherited</summary>
+    </key>
+    <key name="translate-llm-model" type="s">
+      <default>''</default>
+      <summary>Model used when the translation LLM settings are not inherited</summary>
+    </key>
+    <key name="translate-llm-api-key" type="s">
+      <default>''</default>
+      <summary>API key used when the translation LLM settings are not inherited</summary>
+    </key>
+    <key name="translate-llm-api-key-file" type="s">
+      <default>''</default>
+      <summary>API key file used when the translation LLM settings are not inherited</summary>
+    </key>
+    <key name="translate-llm-proxy-mode" type="s">
+      <default>'direct'</default>
+      <choices>
+        <choice value="system"/>
+        <choice value="direct"/>
+        <choice value="custom"/>
+      </choices>
+      <summary>Proxy mode for the translation LLM endpoint</summary>
+    </key>
+    <key name="translate-llm-proxy-url" type="s">
+      <default>'http://127.0.0.1:12334'</default>
+      <summary>Custom proxy URL for the translation LLM endpoint</summary>
+    </key>
+    <key name="translate-llm-timeout-ms" type="i">
+      <default>30000</default>
+      <summary>Network timeout for LLM translation requests in milliseconds</summary>
+    </key>
+    <key name="translate-llm-extra-body" type="s">
+      <default>'{}'</default>
+      <summary>JSON object merged into LLM translation requests</summary>
+    </key>
+    <key name="google-proxy-mode" type="s">
+      <default>'system'</default>
+      <choices>
+        <choice value="system"/>
+        <choice value="direct"/>
+        <choice value="custom"/>
+      </choices>
+      <summary>Proxy mode for Google Translate</summary>
+    </key>
+    <key name="google-proxy-url" type="s">
+      <default>'http://127.0.0.1:12334'</default>
+      <summary>Custom proxy URL for Google Translate</summary>
+    </key>
+    <key name="ocr-copy-mode" type="s">
+      <default>'both'</default>
+      <choices>
+        <choice value="text"/>
+        <choice value="translation"/>
+        <choice value="both"/>
+      </choices>
+      <summary>What is written to the clipboard</summary>
+    </key>
     <key name="ocr-toast-chars" type="i">
       <default>200</default>
       <summary>Characters shown in the OCR result toast, 0 means no truncation</summary>

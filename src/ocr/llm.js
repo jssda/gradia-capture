@@ -11,7 +11,7 @@ const DEFAULT_TIMEOUT_MS = 60000;
 const OCR_PROMPT = N_('只识别图片中的文字，按原始阅读顺序逐行输出，保留换行与标点，不要解释、不要加引号、不要 Markdown 代码块。');
 const INLINE_PROMPT = N_('识别图片中的文字，并翻译成 %s。\n只输出一个 JSON 对象，不要代码块、不要额外文字，格式：\n{"text": "原文（保留换行）", "translation": "译文"}');
 
-function _chatEndpoint(baseUrl) {
+export function chatEndpoint(baseUrl) {
     const base = (baseUrl ?? '').trim().replace(/\/+$/, '');
     if (!base)
         return '';
@@ -20,7 +20,7 @@ function _chatEndpoint(baseUrl) {
     return `${base}/chat/completions`;
 }
 
-function _readApiKey(cfg) {
+export function readApiKey(cfg) {
     const inline = (cfg.apiKey ?? '').trim();
     if (inline)
         return inline;
@@ -45,7 +45,7 @@ function _bytesOf(pngBytes) {
     return pngBytes;
 }
 
-function _extractContent(data) {
+export function extractMessageContent(data) {
     const message = data?.choices?.[0]?.message;
     const content = message?.content;
     if (typeof content === 'string')
@@ -82,13 +82,13 @@ function _parseJsonObject(text) {
 }
 
 export async function ocrWithLlm(pngBytes, cfg = {}, { translate = false, targetLang = 'zh-CN', extraBody = {} } = {}) {
-    const endpoint = _chatEndpoint(cfg.baseUrl);
+    const endpoint = chatEndpoint(cfg.baseUrl);
     if (!endpoint)
         throw new OcrError('LLM_NOT_CONFIGURED', 'Missing base URL');
     if (!(cfg.model ?? '').trim())
         throw new OcrError('LLM_NOT_CONFIGURED', 'Missing model');
 
-    const apiKey = _readApiKey(cfg);
+    const apiKey = readApiKey(cfg);
     const imageData = _bytesOf(pngBytes);
     const base64 = GLib.base64_encode(imageData);
 
@@ -134,7 +134,7 @@ export async function ocrWithLlm(pngBytes, cfg = {}, { translate = false, target
     });
 
     const ms = Math.round((GLib.get_monotonic_time() - started) / 1000);
-    const content = _extractContent(data).trim();
+    const content = extractMessageContent(data).trim();
     const finishReason = data?.choices?.[0]?.finish_reason ?? null;
 
     if (finishReason === 'length')

@@ -28,7 +28,7 @@ function _truncate(text, chars) {
 }
 
 class OcrToast {
-    constructor({ text = '', translation = null, chars = 200, ms = 0 }) {
+    constructor({ text = '', translation = null, chars = 200, ms = 0, notice = null }) {
         this._timeoutId = 0;
         this._signalIds = [];
 
@@ -79,6 +79,17 @@ class OcrToast {
 
         if (translation)
             this._container.add_child(this._makeSection(_('Translation'), _truncate(translation, chars)));
+
+        if (notice) {
+            const noticeLabel = new St.Label({
+                text: notice,
+                x_expand: true,
+                style: 'font-size: 12px; color: #f5a623;',
+            });
+            noticeLabel.clutter_text.line_wrap = true;
+            noticeLabel.clutter_text.line_wrap_mode = Pango.WrapMode.WORD_CHAR;
+            this._container.add_child(noticeLabel);
+        }
 
         const buttons = new St.BoxLayout({ vertical: false, style: 'spacing: 8px; margin-top: 2px;' });
         this._addCopyButton(buttons, _('Copy Original'), text);
@@ -210,9 +221,9 @@ class OcrToast {
     }
 }
 
-export function showOcrToast({ text, translation = null, chars = 200, ms = 0 } = {}) {
+export function showOcrToast({ text, translation = null, chars = 200, ms = 0, notice = null } = {}) {
     destroyOcrToast();
-    _activeToast = new OcrToast({ text, translation, chars, ms });
+    _activeToast = new OcrToast({ text, translation, chars, ms, notice });
 }
 
 export function destroyOcrToast() {
