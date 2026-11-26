@@ -1268,7 +1268,7 @@ export default class GradiaCompanion extends Extension {
             this._ocrButton = createOcrButton(async () => {
                 const file = await this._captureScreenshot({ ocr: true });
                 Main.screenshotUI.close();
-                await dispatchOcr(file, { settings: this._settings });
+                await dispatchOcr(file, { settings: this._settings, extensionPath: this.path });
             });
             ui._showPointerButtonContainer.insert_child_below(this._ocrButton, ui._showPointerButton);
         }

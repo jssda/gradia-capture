@@ -28,6 +28,7 @@ export const OcrPage = GObject.registerClass(
             this._settings = settings;
             this._settingsSignals = [];
             this._buildOcrGroup();
+            this._buildRapidOcrGroup();
             this._buildLlmGroup();
             this._buildResultGroup();
 
@@ -121,6 +122,20 @@ export const OcrPage = GObject.registerClass(
 
             this._comboRow(group, 'ocr-provider', _('OCR engine'),
                 _('Choose how the screenshot is turned into text'), PROVIDERS);
+
+            this.add(group);
+        }
+
+        _buildRapidOcrGroup() {
+            const group = new Adw.PreferencesGroup({ title: _('RapidOCR (local engine)') });
+            group.set_description(_('Works offline after a one time setup. Create the environment once with:\nuv venv --python 3.13 ~/.local/share/gradia-capture/venv\nuv pip install --python ~/.local/share/gradia-capture/venv/bin/python -i https://pypi.tuna.tsinghua.edu.cn/simple rapidocr onnxruntime'));
+
+            this._entryRow(group, 'ocr-rapidocr-python', _('Python interpreter'),
+                _('Leave empty to use the venv in the extension data directory'));
+            this._entryRow(group, 'ocr-rapidocr-lang', _('Language'),
+                _('RapidOCR language type, for example ch or en'));
+            this._spinRow(group, 'ocr-rapidocr-timeout-ms', _('Timeout'),
+                _('Helper process timeout in milliseconds'), { lower: 1000, upper: 300000, step: 1000 });
 
             this.add(group);
         }

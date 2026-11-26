@@ -34,6 +34,18 @@
       </choices>
       <summary>OCR backend</summary>
     </key>
+    <key name="ocr-rapidocr-python" type="s">
+      <default>''</default>
+      <summary>Python interpreter for RapidOCR, empty means the venv in the extension data directory</summary>
+    </key>
+    <key name="ocr-rapidocr-lang" type="s">
+      <default>'ch'</default>
+      <summary>RapidOCR language type</summary>
+    </key>
+    <key name="ocr-rapidocr-timeout-ms" type="i">
+      <default>30000</default>
+      <summary>Timeout for the RapidOCR helper process in milliseconds</summary>
+    </key>
     <key name="ocr-llm-enabled" type="b">
       <default>false</default>
       <summary>Enable the LLM OCR backend</summary>
