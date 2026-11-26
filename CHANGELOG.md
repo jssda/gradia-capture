@@ -44,6 +44,19 @@
 - 新增本文件，并把"这是 fork、改了什么、怎么升级"写进 README；
 - `src/metadata.json` 增加 `license` 字段（见下方许可说明）。
 
+### 4. OCR 与翻译（fork 专属，不进上游 PR）
+
+截图界面新增「提取文字」按钮（`Ctrl+E`）：把选区截图交给 OCR 引擎，可选翻译，结果写入剪贴板并弹出结果面板。
+
+- OCR 三档引擎：`gradia`（转发给 Gradia 应用）/ `rapidocr`（本地，离线）/ `llm`（OpenAI 兼容多模态模型）；
+- 翻译：Google 免 key / LLM，可继承 OCR 的 LLM 配置（此时一体化请求，只发一次）；
+- 结果面板：原文与译文左右对照，超长可滚动；面板内可直接切换 OCR 引擎、翻译引擎与目标语言后重新识别；点复制按钮后面板自动关闭；
+- 三组独立代理：OCR LLM / 翻译 LLM / Google；
+- 新增文件：`src/net.js`、`src/translate.js`、`src/ocr/*.js`、`src/prefs/ocrPage.js`、`python/ocr_helper.py`、`scripts/ocr-selftest.sh`；
+- 方案与决策记录：`docs/PLAN-ocr-translate.md`；P0 基线数据：`docs/P0-ocr-baseline.md`；录屏限制调研：`docs/RESEARCH-recording-vs-screenshot.md`；
+- 本地 RapidOCR 环境（不进仓库）：`uv venv --python 3.13 ~/.local/share/gradia-capture/venv`，再装 `rapidocr onnxruntime`。
+
+
 ## 升级上游的做法
 
 ```bash
@@ -74,8 +87,8 @@ git checkout local && git rebase master
 ## 已知限制 / 注意事项
 
 - **Wayland 下改 JS 必须注销重登**才生效，`gnome-extensions disable/enable` 不会重新加载代码。
-- **OCR 按钮**只在检测到 Gradia flatpak（`be.alexandervanhee.gradia`）时才会创建；
-  本机未安装该应用，所以原生截图界面里不会有 "Extract Text" 按钮。
+- **OCR 按钮**由 `ocr-enabled`（默认开）控制，与是否安装 Gradia 无关；
+  未配置后端或未安装对应运行环境时，触发后会给出一条可操作的通知。
 - 与其它往 `_showPointerButtonContainer` 插按钮的扩展（如
   "Native Screenshot UI OCR Extended"）会抢同一个位置，可能互相干扰或触发 Shell 布局 bug。
 - 扩展只针对 GNOME 48 验证过；49–51 保留在 `shell-version` 里是沿用上游，未实测。
