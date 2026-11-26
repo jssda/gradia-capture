@@ -132,7 +132,7 @@ class OcrResultPanel {
         const header = new St.BoxLayout({vertical: false, style: 'spacing: 10px;'});
 
         this._titleLabel = new St.Label({
-            text: _('OCR') + ' / ' + _('OCR + Translation'),
+            text: _('OCR'),
             x_expand: true,
             y_align: Clutter.ActorAlign.CENTER,
             style: 'font-size: 15px; font-weight: bold;',
@@ -254,7 +254,7 @@ class OcrResultPanel {
     }
 
     _render() {
-        this._titleLabel.text = this._translation ? `${_('OCR')} / ${_('OCR + Translation')}` : _('OCR');
+        this._titleLabel.text = this._translation ? _('OCR + Translation') : _('OCR');
         this._msLabel.text = this._ms > 0 ? `${_('Time')}: ${this._ms} ms` : '';
 
         this._translateTitle.visible = true;
