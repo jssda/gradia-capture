@@ -3,6 +3,7 @@ import GLib from 'gi://GLib';
 import Pango from 'gi://Pango';
 import St from 'gi://St';
 
+import * as Animation from 'resource:///org/gnome/shell/ui/animation.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {_} from '../i18n.js';
 
@@ -16,6 +17,7 @@ const PADDING = 14;
 const MAX_PREVIEW_CHARS = 2000;
 
 let _activeToast = null;
+let _busyToast = null;
 
 function _truncate(text, chars) {
     const limit = chars > 0 ? Math.min(chars, MAX_PREVIEW_CHARS) : MAX_PREVIEW_CHARS;
@@ -34,8 +36,8 @@ class OcrToast {
             vertical: true,
             reactive: true,
             track_hover: true,
-            spacing: 8,
             style: `
+                spacing: 8px;
                 background-color: #222226;
                 border: 1px solid #3a3a3d;
                 border-radius: 12px;
@@ -45,7 +47,7 @@ class OcrToast {
         });
         this._container.set_width(TOAST_WIDTH);
 
-        const header = new St.BoxLayout({ vertical: false, spacing: 8 });
+        const header = new St.BoxLayout({ vertical: false, style: 'spacing: 8px;' });
         const title = new St.Label({
             text: translation ? _('OCR + Translation') : _('OCR'),
             y_align: Clutter.ActorAlign.CENTER,
@@ -78,7 +80,7 @@ class OcrToast {
         if (translation)
             this._container.add_child(this._makeSection(_('Translation'), _truncate(translation, chars)));
 
-        const buttons = new St.BoxLayout({ vertical: false, spacing: 8, style: 'margin-top: 2px;' });
+        const buttons = new St.BoxLayout({ vertical: false, style: 'spacing: 8px; margin-top: 2px;' });
         this._addCopyButton(buttons, _('Copy Original'), text);
         if (translation)
             this._addCopyButton(buttons, _('Copy Translation'), translation);
@@ -105,18 +107,20 @@ class OcrToast {
     }
 
     _makeSection(title, body) {
-        const box = new St.BoxLayout({ vertical: true, spacing: 2 });
+        const box = new St.BoxLayout({ vertical: true, style: 'spacing: 2px;' });
         box.add_child(new St.Label({
             text: title,
             style: 'font-size: 11px; font-weight: bold; opacity: 0.6;',
         }));
-        box.add_child(new St.Label({
+        const bodyLabel = new St.Label({
             text: body,
             style: 'font-size: 13px;',
-            line_wrap: true,
-            line_wrap_mode: Pango.WrapMode.WORD_CHAR,
             x_expand: true,
-        }));
+        });
+        // StLabel 没有 line_wrap 属性, 换行要设在内部的 Clutter.Text 上
+        bodyLabel.clutter_text.line_wrap = true;
+        bodyLabel.clutter_text.line_wrap_mode = Pango.WrapMode.WORD_CHAR;
+        box.add_child(bodyLabel);
         return box;
     }
 
@@ -214,4 +218,62 @@ export function showOcrToast({ text, translation = null, chars = 200, ms = 0 } =
 export function destroyOcrToast() {
     _activeToast?.destroy();
     _activeToast = null;
+}
+
+// OCR 期间的轻量提示: 截图界面关闭后立即出现, 让用户知道正在识别, 而不是干等.
+export function showOcrBusyToast(message = null) {
+    destroyOcrBusyToast();
+
+    const container = new St.BoxLayout({
+        vertical: false,
+        reactive: false,
+        style: `
+            spacing: 10px;
+            padding: 10px 18px;
+            border-radius: 9999px;
+            background-color: rgba(0, 0, 0, 0.78);
+            color: #ffffff;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+        `,
+    });
+
+    // St 没有 Spinner 类, 用 shell 自带的 Spinner 组件
+    const spinner = new Animation.Spinner(16, { animate: true });
+    spinner.play();
+    container.add_child(spinner);
+    container.add_child(new St.Label({
+        text: message ?? _('Recognizing text…'),
+        y_align: Clutter.ActorAlign.CENTER,
+        style: 'font-size: 13px; font-weight: bold;',
+    }));
+
+    Main.layoutManager.addChrome(container);
+
+    const monitor = Main.layoutManager.primaryMonitor;
+    if (monitor) {
+        const [, width] = container.get_preferred_width(-1);
+        const [, height] = container.get_preferred_height(width);
+        container.set_position(
+            monitor.x + Math.round((monitor.width - width) / 2),
+            monitor.y + monitor.height - height - 120);
+    }
+
+    container.opacity = 0;
+    container.show();
+    container.ease({
+        opacity: 255,
+        duration: 120,
+        mode: Clutter.AnimationMode.EASE_OUT_CUBIC,
+    });
+
+    _busyToast = container;
+}
+
+export function destroyOcrBusyToast() {
+    if (!_busyToast)
+        return;
+    const container = _busyToast;
+    _busyToast = null;
+    Main.layoutManager.removeChrome(container);
+    container.destroy();
 }
