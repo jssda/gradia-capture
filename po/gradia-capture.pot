@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: gradia-capture\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-26 11:26+0800\n"
+"POT-Creation-Date: 2026-11-26 15:20+0800\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -17,15 +17,15 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
-#: src/extension.js:1353
-msgid "Drag to Make a Selection"
-msgstr ""
-
-#: src/gradiaIntegration.js:81
+#: src/extension.js:1275 src/gradiaIntegration.js:91
 msgid "Extract Text"
 msgstr ""
 
-#: src/gradiaIntegration.js:92
+#: src/extension.js:1356
+msgid "Drag to Make a Selection"
+msgstr ""
+
+#: src/gradiaIntegration.js:102
 msgid "Settings"
 msgstr ""
 
@@ -234,7 +234,7 @@ msgstr ""
 msgid "Screenshot taken"
 msgstr ""
 
-#: src/screenshotToast.js:150 src/ocr/toast.js:148
+#: src/screenshotToast.js:150
 msgid "Copied!"
 msgstr ""
 
@@ -366,84 +366,99 @@ msgid ""
 msgstr ""
 
 #: src/ocr/engine.js:33
-msgid "The OCR request timed out. Check the network and proxy settings."
+msgid "The request timed out."
 msgstr ""
 
 #: src/ocr/engine.js:34
-msgid ""
-"The OCR service returned an HTTP error. Check the base URL, model name and "
-"API key."
+msgid "The service returned an HTTP error."
 msgstr ""
 
 #: src/ocr/engine.js:35
 msgid ""
-"Cannot reach the OCR service. Check the base URL and network connection."
+"Cannot reach the service. Check the base URL, network and proxy settings."
 msgstr ""
 
 #: src/ocr/engine.js:36
-msgid "The OCR service returned an invalid response."
+msgid "The service returned an invalid response."
 msgstr ""
 
 #: src/ocr/engine.js:37
+msgid "The translation backend is not configured."
+msgstr ""
+
+#: src/ocr/engine.js:38
+msgid "The translation service returned an unexpected response."
+msgstr ""
+
+#: src/ocr/engine.js:39
+msgid "The translation is empty."
+msgstr ""
+
+#: src/ocr/engine.js:40
+msgid "Unknown translation provider."
+msgstr ""
+
+#: src/ocr/engine.js:41
 msgid ""
 "RapidOCR is not installed. Create the Python virtual environment as "
 "described in the documentation."
 msgstr ""
 
-#: src/ocr/engine.js:38
+#: src/ocr/engine.js:42
 msgid ""
 "RapidOCR timed out. Select a smaller area or increase the timeout in "
 "Settings."
 msgstr ""
 
-#: src/ocr/engine.js:39
+#: src/ocr/engine.js:43
 msgid "No text was recognized in the selection."
 msgstr ""
 
-#: src/ocr/engine.js:40
+#: src/ocr/engine.js:44
 msgid "The screenshot file could not be read."
 msgstr ""
 
-#: src/ocr/engine.js:41
+#: src/ocr/engine.js:45
 msgid ""
 "RapidOCR could not load its models. Recreate the Python environment as "
 "described in the documentation."
 msgstr ""
 
-#: src/ocr/engine.js:42
+#: src/ocr/engine.js:46 src/ocr/engine.js:164
 msgid "OCR failed."
 msgstr ""
 
-#: src/ocr/engine.js:43
+#: src/ocr/engine.js:47
 msgid "The selected OCR engine is not available yet."
 msgstr ""
 
-#: src/ocr/engine.js:163 src/ocr/engine.js:269
-msgid "OCR failed"
+#: src/ocr/engine.js:170
+#, javascript-format
+msgid "Translation failed (%s). The original text is still available."
 msgstr ""
 
-#: src/ocr/engine.js:233
-msgid "Translation failed. The original text is still available."
-msgstr ""
-
-#: src/ocr/engine.js:235
+#: src/ocr/engine.js:173
 msgid "The text was too long; only the first part was translated."
 msgstr ""
 
-#: src/ocr/engine.js:269
-msgid "No screenshot was captured."
+#: src/ocr/engine.js:182 src/ocr/engine.js:333
+msgid "OCR failed"
 msgstr ""
 
-#: src/ocr/engine.js:279
+#: src/ocr/engine.js:299
+msgid "Recognizing text and translating…"
+msgstr ""
+
+#: src/ocr/engine.js:300
 msgid "Running local OCR…"
 msgstr ""
 
-#: src/ocr/engine.js:279 src/ocr/toast.js:256
+#: src/ocr/engine.js:300 src/ocr/toast.js:465
 msgid "Recognizing text…"
 msgstr ""
 
-#: src/ocr/engine.js:280
-msgid "Recognizing text and translating…"
+#: src/ocr/engine.js:333
+msgid "No screenshot was captured."
 msgstr ""
 
 #: src/ocr/llm.js:11
@@ -468,117 +483,142 @@ msgstr ""
 msgid "识别截图中的全部文字。"
 msgstr ""
 
-#: src/ocr/toast.js:52
-msgid "OCR + Translation"
+#: src/ocr/toast.js:24
+msgid "Gradia app"
 msgstr ""
 
-#: src/ocr/toast.js:52 src/prefs/ocrPage.js:126
-msgid "OCR"
-msgstr ""
-
-#: src/ocr/toast.js:61
-msgid "Time"
-msgstr ""
-
-#: src/ocr/toast.js:78
-msgid "Original Text"
-msgstr ""
-
-#: src/ocr/toast.js:81 src/prefs/ocrPage.js:197
-msgid "Translation"
-msgstr ""
-
-#: src/ocr/toast.js:95
-msgid "Copy Original"
-msgstr ""
-
-#: src/ocr/toast.js:97
-msgid "Copy Translation"
-msgstr ""
-
-#: src/ocr/toast.js:101
-msgid "Close"
-msgstr ""
-
-#: src/prefs/ocrPage.js:9
-msgid "Gradia app (hand the screenshot over)"
-msgstr ""
-
-#: src/prefs/ocrPage.js:10
-msgid "RapidOCR (local, works offline)"
-msgstr ""
-
-#: src/prefs/ocrPage.js:11
-msgid "LLM vision model (OpenAI compatible)"
-msgstr ""
-
-#: src/prefs/ocrPage.js:15
-msgid "No translation"
-msgstr ""
-
-#: src/prefs/ocrPage.js:16
-msgid "Google Translate (free)"
-msgstr ""
-
-#: src/prefs/ocrPage.js:17
-msgid "LLM"
-msgstr ""
-
-#: src/prefs/ocrPage.js:21
-msgid "Original text only"
-msgstr ""
-
-#: src/prefs/ocrPage.js:22
-msgid "Translation only"
-msgstr ""
-
-#: src/prefs/ocrPage.js:23
-msgid "Original and translation"
-msgstr ""
-
-#: src/prefs/ocrPage.js:27
-msgid "Use system proxy"
-msgstr ""
-
-#: src/prefs/ocrPage.js:28
-msgid "Connect directly"
-msgstr ""
-
-#: src/prefs/ocrPage.js:29
-msgid "Use custom proxy"
-msgstr ""
-
-#: src/prefs/ocrPage.js:36
-msgid "OCR & Translation"
-msgstr ""
-
-#: src/prefs/ocrPage.js:127
-msgid ""
-"Ctrl+E or the scanner button in the screenshot UI extracts the text of the "
-"selection."
-msgstr ""
-
-#: src/prefs/ocrPage.js:130
-msgid "Enable OCR"
-msgstr ""
-
-#: src/prefs/ocrPage.js:131
-msgid "Show the OCR button in the screenshot UI"
-msgstr ""
-
-#: src/prefs/ocrPage.js:136
-msgid "OCR engine"
-msgstr ""
-
-#: src/prefs/ocrPage.js:137
-msgid "Choose how the screenshot is turned into text"
-msgstr ""
-
-#: src/prefs/ocrPage.js:143
+#: src/ocr/toast.js:25 src/ocr/toast.js:168 src/prefs/ocrPage.js:164
 msgid "RapidOCR (local engine)"
 msgstr ""
 
-#: src/prefs/ocrPage.js:144
+#: src/ocr/toast.js:26 src/ocr/toast.js:32 src/ocr/toast.js:169
+#: src/ocr/toast.js:181 src/prefs/ocrPage.js:18
+msgid "LLM"
+msgstr ""
+
+#: src/ocr/toast.js:30 src/ocr/toast.js:179 src/prefs/ocrPage.js:16
+msgid "No translation"
+msgstr ""
+
+#: src/ocr/toast.js:31 src/ocr/toast.js:180
+msgid "Google Translate"
+msgstr ""
+
+#: src/ocr/toast.js:135 src/ocr/toast.js:257 src/prefs/ocrPage.js:151
+msgid "OCR"
+msgstr ""
+
+#: src/ocr/toast.js:135 src/ocr/toast.js:257
+msgid "OCR + Translation"
+msgstr ""
+
+#: src/ocr/toast.js:164 src/prefs/ocrPage.js:157
+msgid "OCR engine"
+msgstr ""
+
+#: src/ocr/toast.js:174 src/ocr/toast.js:274 src/prefs/ocrPage.js:225
+msgid "Translation"
+msgstr ""
+
+#: src/ocr/toast.js:186 src/prefs/ocrPage.js:97
+msgid "Target language"
+msgstr ""
+
+#: src/ocr/toast.js:200
+msgid "Recognize again"
+msgstr ""
+
+#: src/ocr/toast.js:227
+msgid "Copy Original"
+msgstr ""
+
+#: src/ocr/toast.js:233
+msgid "Copy Translation"
+msgstr ""
+
+#: src/ocr/toast.js:239
+msgid "Close"
+msgstr ""
+
+#: src/ocr/toast.js:258
+msgid "Time"
+msgstr ""
+
+#: src/ocr/toast.js:272
+msgid "Original Text"
+msgstr ""
+
+#: src/ocr/toast.js:333
+msgid "Recognizing…"
+msgstr ""
+
+#: src/prefs/ocrPage.js:10
+msgid "Gradia app (hand the screenshot over)"
+msgstr ""
+
+#: src/prefs/ocrPage.js:11
+msgid "RapidOCR (local, works offline)"
+msgstr ""
+
+#: src/prefs/ocrPage.js:12
+msgid "LLM vision model (OpenAI compatible)"
+msgstr ""
+
+#: src/prefs/ocrPage.js:17
+msgid "Google Translate (free)"
+msgstr ""
+
+#: src/prefs/ocrPage.js:22
+msgid "Original text only"
+msgstr ""
+
+#: src/prefs/ocrPage.js:23
+msgid "Translation only"
+msgstr ""
+
+#: src/prefs/ocrPage.js:24
+msgid "Original and translation"
+msgstr ""
+
+#: src/prefs/ocrPage.js:28
+msgid "Use system proxy"
+msgstr ""
+
+#: src/prefs/ocrPage.js:29
+msgid "Connect directly"
+msgstr ""
+
+#: src/prefs/ocrPage.js:30
+msgid "Use custom proxy"
+msgstr ""
+
+#: src/prefs/ocrPage.js:37
+msgid "OCR & Translation"
+msgstr ""
+
+#: src/prefs/ocrPage.js:98
+msgid "Language the text is translated into"
+msgstr ""
+
+#: src/prefs/ocrPage.js:152
+msgid ""
+"Ctrl+E or the scanner button in the screenshot UI extracts the text of the "
+"selection. The result panel also lets you switch engines and translate again."
+msgstr ""
+
+#: src/prefs/ocrPage.js:154
+msgid "Enable OCR"
+msgstr ""
+
+#: src/prefs/ocrPage.js:155
+msgid "Show the OCR button in the screenshot UI"
+msgstr ""
+
+#: src/prefs/ocrPage.js:158
+msgid "Choose how the screenshot is turned into text"
+msgstr ""
+
+#: src/prefs/ocrPage.js:165
 msgid ""
 "Works offline after a one time setup. Create the environment once with:\n"
 "uv venv --python 3.13 ~/.local/share/gradia-capture/venv\n"
@@ -586,35 +626,35 @@ msgid ""
 "https://pypi.tuna.tsinghua.edu.cn/simple rapidocr onnxruntime"
 msgstr ""
 
-#: src/prefs/ocrPage.js:146
+#: src/prefs/ocrPage.js:168
 msgid "Python interpreter"
 msgstr ""
 
-#: src/prefs/ocrPage.js:147
+#: src/prefs/ocrPage.js:169
 msgid "Leave empty to use the venv in the extension data directory"
 msgstr ""
 
-#: src/prefs/ocrPage.js:148
+#: src/prefs/ocrPage.js:170
 msgid "Language"
 msgstr ""
 
-#: src/prefs/ocrPage.js:149
+#: src/prefs/ocrPage.js:171
 msgid "RapidOCR language type, for example ch or en"
 msgstr ""
 
-#: src/prefs/ocrPage.js:150 src/prefs/ocrPage.js:186
+#: src/prefs/ocrPage.js:172 src/prefs/ocrPage.js:203
 msgid "Timeout"
 msgstr ""
 
-#: src/prefs/ocrPage.js:151
+#: src/prefs/ocrPage.js:173
 msgid "Helper process timeout in milliseconds"
 msgstr ""
 
-#: src/prefs/ocrPage.js:157
+#: src/prefs/ocrPage.js:183
 msgid "LLM OCR"
 msgstr ""
 
-#: src/prefs/ocrPage.js:158
+#: src/prefs/ocrPage.js:184
 msgid ""
 "Only the OpenAI compatible /chat/completions protocol is supported. The "
 "model must accept image input. Nothing is prefilled. Example: base URL "
@@ -623,207 +663,204 @@ msgid ""
 "it when the vendor supports it."
 msgstr ""
 
-#: src/prefs/ocrPage.js:161
+#: src/prefs/ocrPage.js:186
 msgid "Enable LLM OCR"
 msgstr ""
 
-#: src/prefs/ocrPage.js:162
+#: src/prefs/ocrPage.js:187
 msgid "Required when the OCR engine is set to LLM"
 msgstr ""
 
-#: src/prefs/ocrPage.js:167
-msgid "Base URL"
-msgstr ""
-
-#: src/prefs/ocrPage.js:168
-msgid "Example: https://api.deepseek.com (leave empty until you configure it)"
-msgstr ""
-
-#: src/prefs/ocrPage.js:169
-msgid "Model"
-msgstr ""
-
-#: src/prefs/ocrPage.js:169 src/prefs/ocrPage.js:222
-msgid "Example: deepseek-flash"
-msgstr ""
-
-#: src/prefs/ocrPage.js:170
-msgid "API key"
-msgstr ""
-
-#: src/prefs/ocrPage.js:171
-msgid "Stored in plain text in dconf; prefer the key file below when possible"
-msgstr ""
-
-#: src/prefs/ocrPage.js:173
-msgid "API key file"
-msgstr ""
-
-#: src/prefs/ocrPage.js:174
-msgid "When set, the first line of this file is used instead of the API key"
-msgstr ""
-
-#: src/prefs/ocrPage.js:176
-msgid "Proxy"
-msgstr ""
-
-#: src/prefs/ocrPage.js:177
-msgid "Use the system proxy, connect directly, or use a custom proxy"
-msgstr ""
-
-#: src/prefs/ocrPage.js:178
+#: src/prefs/ocrPage.js:189
 msgid "Proxy URL"
 msgstr ""
 
-#: src/prefs/ocrPage.js:179 src/prefs/ocrPage.js:230
+#: src/prefs/ocrPage.js:190 src/prefs/ocrPage.js:251
 msgid "Only used when the proxy mode is set to custom"
 msgstr ""
 
-#: src/prefs/ocrPage.js:187 src/prefs/ocrPage.js:232
+#: src/prefs/ocrPage.js:193
+msgid "Base URL"
+msgstr ""
+
+#: src/prefs/ocrPage.js:194
+msgid "Example: https://api.deepseek.com (leave empty until you configure it)"
+msgstr ""
+
+#: src/prefs/ocrPage.js:195
+msgid "Model"
+msgstr ""
+
+#: src/prefs/ocrPage.js:195 src/prefs/ocrPage.js:243
+msgid "Example: deepseek-flash"
+msgstr ""
+
+#: src/prefs/ocrPage.js:196
+msgid "API key"
+msgstr ""
+
+#: src/prefs/ocrPage.js:197
+msgid "Stored in plain text in dconf; prefer the key file below when possible"
+msgstr ""
+
+#: src/prefs/ocrPage.js:199
+msgid "API key file"
+msgstr ""
+
+#: src/prefs/ocrPage.js:200
+msgid "When set, the first line of this file is used instead of the API key"
+msgstr ""
+
+#: src/prefs/ocrPage.js:201
+msgid "Proxy"
+msgstr ""
+
+#: src/prefs/ocrPage.js:201
+msgid "Proxy mode for LLM OCR"
+msgstr ""
+
+#: src/prefs/ocrPage.js:204 src/prefs/ocrPage.js:253
 msgid "Network timeout in milliseconds"
 msgstr ""
 
-#: src/prefs/ocrPage.js:188
+#: src/prefs/ocrPage.js:205
 msgid "Custom prompt"
 msgstr ""
 
-#: src/prefs/ocrPage.js:189
+#: src/prefs/ocrPage.js:206
 msgid "Leave empty to use the built-in prompt"
 msgstr ""
 
-#: src/prefs/ocrPage.js:190
+#: src/prefs/ocrPage.js:207
 msgid "Extra request body"
 msgstr ""
 
-#: src/prefs/ocrPage.js:191
+#: src/prefs/ocrPage.js:208
 msgid ""
 "JSON object merged into the request body, e.g. vendor specific parameters"
 msgstr ""
 
-#: src/prefs/ocrPage.js:198
+#: src/prefs/ocrPage.js:210
 msgid ""
-"When a translation provider is set, the recognized text is translated before "
-"it is shown and copied."
+"Proxy modes: system follows the desktop proxy, direct bypasses any proxy, "
+"custom uses the proxy URL below."
 msgstr ""
 
-#: src/prefs/ocrPage.js:201
+#: src/prefs/ocrPage.js:226
+msgid ""
+"When a translation provider is set, the recognized text is translated before "
+"it is shown and copied. With the LLM OCR engine and an inherited LLM "
+"configuration, a single combined request is sent."
+msgstr ""
+
+#: src/prefs/ocrPage.js:228
 msgid "Enable translation"
 msgstr ""
 
-#: src/prefs/ocrPage.js:202
+#: src/prefs/ocrPage.js:229
 msgid "Translate recognized text when a provider is selected"
 msgstr ""
 
-#: src/prefs/ocrPage.js:207
+#: src/prefs/ocrPage.js:230
 msgid "Translation provider"
 msgstr ""
 
-#: src/prefs/ocrPage.js:208
+#: src/prefs/ocrPage.js:231
 msgid "Choose how the text is translated"
 msgstr ""
 
-#: src/prefs/ocrPage.js:209
-msgid "Target language"
-msgstr ""
-
-#: src/prefs/ocrPage.js:210
-msgid "Example: zh-CN, en, ja"
-msgstr ""
-
-#: src/prefs/ocrPage.js:213
+#: src/prefs/ocrPage.js:234
 msgid "Reuse the LLM OCR connection"
 msgstr ""
 
-#: src/prefs/ocrPage.js:214
+#: src/prefs/ocrPage.js:235
 msgid ""
 "Use the LLM OCR base URL, model, key and proxy for translation; with the LLM "
 "OCR engine this sends a single combined request"
 msgstr ""
 
-#: src/prefs/ocrPage.js:219
-msgid "Translation base URL"
-msgstr ""
-
-#: src/prefs/ocrPage.js:220
-msgid "Only used when the configuration is not inherited"
-msgstr ""
-
-#: src/prefs/ocrPage.js:221
-msgid "Translation model"
-msgstr ""
-
-#: src/prefs/ocrPage.js:223
-msgid "Translation API key"
-msgstr ""
-
-#: src/prefs/ocrPage.js:224
-msgid "Stored in plain text in dconf"
-msgstr ""
-
-#: src/prefs/ocrPage.js:225
-msgid "Translation API key file"
-msgstr ""
-
-#: src/prefs/ocrPage.js:226
-msgid "When set, the first line of this file is used instead"
-msgstr ""
-
-#: src/prefs/ocrPage.js:227
-msgid "Translation proxy"
-msgstr ""
-
-#: src/prefs/ocrPage.js:228
-msgid "Proxy mode for the translation LLM"
-msgstr ""
-
-#: src/prefs/ocrPage.js:229
-msgid "Translation proxy URL"
-msgstr ""
-
-#: src/prefs/ocrPage.js:231
-msgid "Translation timeout"
-msgstr ""
-
-#: src/prefs/ocrPage.js:233
-msgid "Translation extra body"
-msgstr ""
-
-#: src/prefs/ocrPage.js:234
-msgid "JSON object merged into translation requests"
-msgstr ""
-
-#: src/prefs/ocrPage.js:236
-msgid "Google Translate proxy"
-msgstr ""
-
 #: src/prefs/ocrPage.js:237
-msgid "Google Translate usually needs a proxy"
-msgstr ""
-
-#: src/prefs/ocrPage.js:238
 msgid "Google Translate proxy URL"
 msgstr ""
 
-#: src/prefs/ocrPage.js:239
+#: src/prefs/ocrPage.js:238
 msgid "Only used when the custom proxy mode is set"
 msgstr ""
 
+#: src/prefs/ocrPage.js:241
+msgid "Translation base URL"
+msgstr ""
+
+#: src/prefs/ocrPage.js:242
+msgid "Only used when the configuration is not inherited"
+msgstr ""
+
+#: src/prefs/ocrPage.js:243
+msgid "Translation model"
+msgstr ""
+
+#: src/prefs/ocrPage.js:244
+msgid "Translation API key"
+msgstr ""
+
 #: src/prefs/ocrPage.js:245
-msgid "Result"
+msgid "Stored in plain text in dconf"
+msgstr ""
+
+#: src/prefs/ocrPage.js:246
+msgid "Translation API key file"
 msgstr ""
 
 #: src/prefs/ocrPage.js:247
-msgid "Copy to clipboard"
+msgid "When set, the first line of this file is used instead"
 msgstr ""
 
 #: src/prefs/ocrPage.js:248
-msgid "What is written to the clipboard after recognition"
+msgid "Translation proxy"
+msgstr ""
+
+#: src/prefs/ocrPage.js:249
+msgid "Proxy mode for the translation LLM"
 msgstr ""
 
 #: src/prefs/ocrPage.js:250
-msgid "Preview characters"
+msgid "Translation proxy URL"
 msgstr ""
 
-#: src/prefs/ocrPage.js:251
-msgid "Characters shown in the result toast, 0 means no truncation"
+#: src/prefs/ocrPage.js:252
+msgid "Translation timeout"
+msgstr ""
+
+#: src/prefs/ocrPage.js:254
+msgid "Translation extra body"
+msgstr ""
+
+#: src/prefs/ocrPage.js:255
+msgid "JSON object merged into translation requests"
+msgstr ""
+
+#: src/prefs/ocrPage.js:259
+msgid "Google Translate proxy"
+msgstr ""
+
+#: src/prefs/ocrPage.js:260
+msgid "Google Translate usually needs a proxy"
+msgstr ""
+
+#: src/prefs/ocrPage.js:280
+msgid "Result"
+msgstr ""
+
+#: src/prefs/ocrPage.js:281
+msgid ""
+"The result panel shows the original text and the translation next to each "
+"other and scrolls when the text is long. Copying from the panel closes it."
+msgstr ""
+
+#: src/prefs/ocrPage.js:283
+msgid "Copy to clipboard"
+msgstr ""
+
+#: src/prefs/ocrPage.js:284
+msgid "What is written to the clipboard after recognition"
 msgstr ""
