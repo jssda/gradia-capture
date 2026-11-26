@@ -12,6 +12,16 @@ The goal of this repository is day-to-day use on Debian 13 + GNOME 48 (Wayland):
 a single pipeline of **screenshot → annotate → recognize text → translate → copy/view**,
 with a fully translated Simplified Chinese interface.
 
+## Screenshots
+
+![OCR only result panel](docs/screenshots/result-panel-ocr.png)
+
+*OCR only: the recognized text, with the engine / translation / target-language selectors on top.*
+
+![OCR and translation result panel](docs/screenshots/result-panel-translate.png)
+
+*OCR with an LLM translation: original text and translation side by side.*
+
 ## Features
 
 ### Screenshots and annotations (from upstream)
@@ -180,7 +190,6 @@ dbus-run-session -- gnome-shell --nested --wayland
 | `master` | Upstream mirror, fast-forward only |
 | `local` | master + local maintenance commits (GNOME 48 support, gettext/Chinese, license, docs, OCR/translation) |
 | `gnome-48-support` / `i18n-gettext-zh_CN` | The two upstream PR branches, kept clean |
-| `feature/ocr-translate` | Development branch for the fork-only OCR/translation work |
 
 Syncing with upstream:
 

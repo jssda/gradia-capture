@@ -9,6 +9,16 @@
 本仓库的目标：在 Debian 13 + GNOME 48（Wayland）上长期日用，做到
 **截图 → 标注 → 识别文字 → 翻译 → 复制/查看** 一条链路可用，界面为简体中文。
 
+## 截图
+
+![纯 OCR 结果面板](docs/screenshots/result-panel-ocr.png)
+
+*仅识别：面板顶部可直接选择 OCR 引擎、翻译引擎与目标语言。*
+
+![OCR + 翻译结果面板](docs/screenshots/result-panel-translate.png)
+
+*OCR + LLM 翻译：原文与译文左右对照，长文本可滚动查看。*
+
 ## 功能
 
 ### 截图与标注（沿用上游）
@@ -166,7 +176,6 @@ dbus-run-session -- gnome-shell --nested --wayland
 | `master` | 上游镜像，只允许 fast-forward |
 | `local` | master + 本地维护提交（GNOME 48 支持、gettext/中文、许可与文档） |
 | `gnome-48-support` / `i18n-gettext-zh_CN` | 已提交上游的两个 PR 分支，保持干净 |
-| `feature/ocr-translate` | 本 fork 的 OCR/翻译开发分支 |
 
 同步上游：
 
