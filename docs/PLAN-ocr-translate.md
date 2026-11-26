@@ -152,7 +152,8 @@ Ctrl+E / 按钮
 // src/ocr/engine.js
 export async function dispatchOcr(file /* Gio.File */, opts = {})
 // → { engine: 'gradia'|'rapidocr'|'llm', text: string, translation: string|null,
-//     timedOut?: false, ms: { ocr: number, translate: number, total: number }, warnings: string[] }
+//     ms: { ocr: number, translate: number, total: number }, warnings: string[],
+//     translationError?: string, requestId?: string }
 
 // src/ocr/rapidocr.js
 export async function ocrWithRapidOcr(file, { pythonPath, lang, timeoutMs })
@@ -164,8 +165,8 @@ export async function ocrWithLlm(pngBytes /* GLib.Bytes|Uint8Array */, cfg,
 // → { text, translation: string|null, ms, requestId?: string }
 
 // src/translate.js
-export async function translateText(text, { provider, targetLang, profile })
-// → string
+export async function translateText(text, { provider, targetLang, profile, warnings })
+// → string；warnings 由调用方传入数组, 用于记录 TRANSLATE_TRUNCATED 等非致命告警
 
 // src/net.js
 export function sessionFor({ mode /* 'system'|'direct'|'custom' */, url, ignoreHosts })
@@ -420,7 +421,7 @@ grep -c 'msgstr ""' po/zh_CN.po   # 只应出现在头部
 3. `journalctl --user -b -o cat /usr/bin/gnome-shell | grep -i gradia` 无 JS 异常；
 4. OCR 期间桌面可正常交互（拖动窗口不卡）。
 
-### P2 — 翻译（0.5 天）
+### P2 — 翻译（0.5 天）— 代码完成，待手工验收
 
 范围：`translate.js`、继承/一体化逻辑、目标语言、复制模式、相关设置项。
 
@@ -551,3 +552,41 @@ P0 期间发现、需要在实现中吸收的差异（已回写到相关小节�
 - 新增设置键：`ocr-rapidocr-python`、`ocr-rapidocr-lang`、`ocr-rapidocr-timeout-ms`；
 - 首选项新增「RapidOCR (本地引擎)」分组，包含安装命令说明、解释器路径、语言、超时；
 - 实测（嵌套 shell，本机 4 核 CPU）：冷启动约 3.3 秒，识别结果正确；模型随 wheel 自带，断网可用。
+
+## 20. P2 实现与验证记录（2026-11-26）
+
+P2 范围：`src/translate.js`、LLM 翻译复用、一体化、目标语言、复制模式、首选项翻译分组。
+
+实现要点：
+
+- `src/translate.js`：
+  - Google 免 key：`translate_a/single`，`sl=auto`，按段落分批（每批 ≤ 4000 字符、最多 3 批、超出记 `TRANSLATE_TRUNCATED`），串行请求；
+  - LLM 翻译：复用 `ocr/llm.js` 导出的 `chatEndpoint` / `readApiKey` / `extractMessageContent`，`max_tokens` 2048，`finish_reason=length` 抛 `LLM_TRUNCATED`；
+  - 翻译失败抛 `OcrError`，由 `engine.js` 降级处理（原文保留）。
+- `engine.js`：
+  - 一体化（D7）：OCR=LLM 且翻译=LLM 且 `translate-llm-inherit=true` 时，一次请求同时取回原文与译文；
+  - 非一体化：先 OCR 再调 `translateText()`；翻译失败时 `translation=null`、`translationError` 记录错误码、`warnings` 记 `TRANSLATE_FAILED`，toast 显示提示，剪贴板退化为原文；
+  - 剪贴板按 `ocr-copy-mode`：`text` / `translation` / `both`（原文 + 空行 + 译文，翻译缺失时退化为原文）；
+  - 翻译 profile：Google 用 `google-proxy-*`；LLM 继承时复用 OCR 的 LLM 配置，否则用 `translate-llm-*`。
+- `toast.js`：新增 `notice` 行（翻译失败/截断提示）与 `showOcrBusyToast()`。
+- 首选项新增「翻译」分组（启用/提供方/目标语言/继承/独立 LLM 配置/Google 代理），结果分组新增复制模式。
+
+验证（嵌套 shell 内探针实测，真实 shell 进程）：
+
+| 场景 | 结果 |
+|---|---|
+| Google 直连翻译普通英文句子 | 正确返回中文（经系统代理，0.9 秒） |
+| RapidOCR + Google，复制模式 both | 原文 632 字，译文 416 字，剪贴板 1050 字含空行分隔，总耗时约 5.1 秒 |
+| RapidOCR + 独立 LLM（inherit=false），复制模式 translation | 译文 279 字，剪贴板等于译文，总耗时约 5.6 秒 |
+| 一体化（LLM OCR + LLM 翻译 + inherit），复制模式 text | **单次请求** 1.8 秒返回原文 413 字 + 译文 333 字，剪贴板等于原文 |
+| Google 代理故意指向坏端口 | 原文 632 字保留，`translationError=NET_UNREACHABLE`，剪贴板等于原文（无空行） |
+| 关闭翻译（translate-enabled=false） | translation 为 null，无翻译请求 |
+| 首选项页 | 在 libadwaita 1.7 下构建无异常，新增分组加载正常 |
+
+## 21. 录屏期间无法截图（调研记录，2026-11-26）
+
+结论：这是 GNOME Shell 原生限制（非本 fork 引入）。截图界面 `ScreenshotUI.open()` 在 `_screencastInProgress` 为真时直接返回；该标志只由截图 UI 自带的录屏按钮置位。因此用系统截图 UI 录屏期间，系统截图与本扩展的 OCR 都不可用；用第三方录屏工具（OBS/Kooha/portal）时不设置该标志，按源码推断不影响截图。
+
+顺带修复：`Main.screenshotUI.open` 包装器在 shell 拒绝打开时不再挂扩展 UI（`src/extension.js` 增加 `visible` 检查）。
+
+详见 `docs/RESEARCH-recording-vs-screenshot.md`。
