@@ -205,7 +205,7 @@ export const OcrPage = GObject.registerClass(
                 this._entryRow(group, 'ocr-llm-prompt', _('Custom prompt'),
                     _('Leave empty to use the built-in prompt')),
                 this._entryRow(group, 'ocr-llm-extra-body', _('Extra request body'),
-                    _('JSON object merged into the request body, e.g. vendor specific parameters')),
+                    _('JSON object merged into the request body. To turn off the thinking mode on vendors that support it, pass {"thinking": {"type": "disabled"}} (the exact parameter depends on the vendor).')),
             ];
             group.set_description(`${group.description}\n${_('Proxy modes: system follows the desktop proxy, direct bypasses any proxy, custom uses the proxy URL below.')}`);
 
@@ -252,7 +252,7 @@ export const OcrPage = GObject.registerClass(
                 this._spinRow(group, 'translate-llm-timeout-ms', _('Translation timeout'),
                     _('Network timeout in milliseconds'), { lower: 1000, upper: 300000, step: 1000 }),
                 this._entryRow(group, 'translate-llm-extra-body', _('Translation extra body'),
-                    _('JSON object merged into translation requests')),
+                    _('JSON object merged into translation requests. To turn off the thinking mode on vendors that support it, pass {"thinking": {"type": "disabled"}} (the exact parameter depends on the vendor).')),
             ];
 
             const googleRows = [

@@ -6,7 +6,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: gradia-capture\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-26 15:20+0800\n"
+"POT-Creation-Date: 2026-11-26 15:45+0800\n"
 "PO-Revision-Date: 2026-10-19 10:00+0800\n"
 "Last-Translator: jssd\n"
 "Language-Team: Chinese (Simplified)\n"
@@ -16,16 +16,16 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
-#: src/extension.js:1275 src/gradiaIntegration.js:91
-msgid "Extract Text"
-msgstr "提取文字"
-
 # 截图浮层
 #: src/extension.js:1356
 msgid "Drag to Make a Selection"
 msgstr "拖动以选择区域"
 
-#: src/gradiaIntegration.js:102
+#: src/gradiaIntegration.js:81
+msgid "Extract Text"
+msgstr "提取文字"
+
+#: src/gradiaIntegration.js:92
 msgid "Settings"
 msgstr "设置"
 
@@ -441,6 +441,7 @@ msgid "The selected OCR engine is not available yet."
 msgstr "所选的 OCR 引擎尚不可用."
 
 #: src/ocr/engine.js:170
+#, javascript-format
 msgid "Translation failed (%s). The original text is still available."
 msgstr "翻译失败 (%s), 原文仍然可用."
 
@@ -460,7 +461,7 @@ msgstr "正在识别并翻译…"
 msgid "Running local OCR…"
 msgstr "正在本地识别…"
 
-#: src/ocr/engine.js:300 src/ocr/toast.js:465
+#: src/ocr/engine.js:300 src/ocr/toast.js:474
 msgid "Recognizing text…"
 msgstr "正在识别文字…"
 
@@ -560,7 +561,7 @@ msgstr "耗时"
 msgid "Original Text"
 msgstr "原文"
 
-#: src/ocr/toast.js:333
+#: src/ocr/toast.js:342
 msgid "Recognizing…"
 msgstr "正在识别…"
 
@@ -759,8 +760,12 @@ msgstr "附加请求体"
 
 #: src/prefs/ocrPage.js:208
 msgid ""
-"JSON object merged into the request body, e.g. vendor specific parameters"
-msgstr "合并进请求体的 JSON 对象, 例如厂商扩展参数"
+"JSON object merged into the request body. To turn off the thinking mode on "
+"vendors that support it, pass {\"thinking\": {\"type\": \"disabled\"}} (the "
+"exact parameter depends on the vendor)."
+msgstr ""
+"合并进请求体的 JSON 对象. 厂商支持时, 可传 {\"thinking\": {\"type\": "
+"\"disabled\"}} 关闭思考模式 (具体参数名以厂商文档为准)."
 
 #: src/prefs/ocrPage.js:210
 msgid ""
@@ -864,8 +869,13 @@ msgid "Translation extra body"
 msgstr "翻译附加请求体"
 
 #: src/prefs/ocrPage.js:255
-msgid "JSON object merged into translation requests"
-msgstr "合并进翻译请求的 JSON 对象"
+msgid ""
+"JSON object merged into translation requests. To turn off the thinking mode "
+"on vendors that support it, pass {\"thinking\": {\"type\": \"disabled\"}} "
+"(the exact parameter depends on the vendor)."
+msgstr ""
+"合并进翻译请求的 JSON 对象. 厂商支持时, 可传 {\"thinking\": {\"type\": "
+"\"disabled\"}} 关闭思考模式 (具体参数名以厂商文档为准)."
 
 #: src/prefs/ocrPage.js:259
 msgid "Google Translate proxy"

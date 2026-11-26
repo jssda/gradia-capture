@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: gradia-capture\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-26 15:20+0800\n"
+"POT-Creation-Date: 2026-11-26 15:45+0800\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -17,15 +17,15 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
-#: src/extension.js:1275 src/gradiaIntegration.js:91
-msgid "Extract Text"
-msgstr ""
-
 #: src/extension.js:1356
 msgid "Drag to Make a Selection"
 msgstr ""
 
-#: src/gradiaIntegration.js:102
+#: src/gradiaIntegration.js:81
+msgid "Extract Text"
+msgstr ""
+
+#: src/gradiaIntegration.js:92
 msgid "Settings"
 msgstr ""
 
@@ -453,7 +453,7 @@ msgstr ""
 msgid "Running local OCR…"
 msgstr ""
 
-#: src/ocr/engine.js:300 src/ocr/toast.js:465
+#: src/ocr/engine.js:300 src/ocr/toast.js:474
 msgid "Recognizing text…"
 msgstr ""
 
@@ -548,7 +548,7 @@ msgstr ""
 msgid "Original Text"
 msgstr ""
 
-#: src/ocr/toast.js:333
+#: src/ocr/toast.js:342
 msgid "Recognizing…"
 msgstr ""
 
@@ -737,7 +737,9 @@ msgstr ""
 
 #: src/prefs/ocrPage.js:208
 msgid ""
-"JSON object merged into the request body, e.g. vendor specific parameters"
+"JSON object merged into the request body. To turn off the thinking mode on "
+"vendors that support it, pass {\"thinking\": {\"type\": \"disabled\"}} (the "
+"exact parameter depends on the vendor)."
 msgstr ""
 
 #: src/prefs/ocrPage.js:210
@@ -836,7 +838,10 @@ msgid "Translation extra body"
 msgstr ""
 
 #: src/prefs/ocrPage.js:255
-msgid "JSON object merged into translation requests"
+msgid ""
+"JSON object merged into translation requests. To turn off the thinking mode "
+"on vendors that support it, pass {\"thinking\": {\"type\": \"disabled\"}} "
+"(the exact parameter depends on the vendor)."
 msgstr ""
 
 #: src/prefs/ocrPage.js:259
