@@ -410,7 +410,7 @@ grep -c 'msgstr ""' po/zh_CN.po   # 只应出现在头部
 
 **DoD**：数据表 + 结论；`git status` 干净。
 
-### P1 — LLM OCR 通路（0.5–1 天）— 代码已完成，待手工验收（Wayland 需注销重登）
+### P1 — LLM OCR 通路（0.5–1 天）— 代码完成，运行时问题已修复，待手工验收（Wayland 需注销重登）
 
 范围：`net.js`、`ocr/llm.js`、`ocr/engine.js`（仅 llm 分支）、`ocr/toast.js`、LLM 相关设置键、最小 prefs 页、`extension.js` 两处改动、`build.sh` extra-source。
 
@@ -430,7 +430,7 @@ grep -c 'msgstr ""' po/zh_CN.po   # 只应出现在头部
 3. `translate-provider=llm` + `inherit=true` + `ocr-provider=llm`：**只发一次请求**（用网关日志或本地抓包确认），返回原文+译文；
 4. 翻译失败时原文仍进剪贴板，toast 明确提示翻译失败。
 
-### P3 — RapidOCR 本地引擎（0.5 天）
+### P3 — RapidOCR 本地引擎（0.5 天）— 已提前实现（代码完成，待手工验收）
 
 **DoD**：
 1. `ocr-provider=rapidocr` 在**断网**下可用；
@@ -529,3 +529,25 @@ P0 期间发现、需要在实现中吸收的差异（已回写到相关小节�
 - RapidOCR 3.10 模型随 wheel 自带，无下载；但每次子进程调用 3.5–4.5 秒（本机 4 核 CPU），P3 DoD 的延迟预期需按实测修正；
 - 思考模式会挤占 `max_tokens` 并显著增加延迟，文档示例给出关闭方式（不预填）；
 - 解析层需处理 `finish_reason == 'length'` 或空 `content` 的截断情况，给出可操作错误。
+
+## 18. 运行时修复记录（2026-11-26）
+
+首次重登实测发现 OCR 成功后仍报「OCR 失败」，排查结论与修复：
+
+1. **toast 用了 GNOME 48 不存在的构造属性**，OCR 成功后创建 toast 抛异常，被 `dispatchOcr` 的 catch 当成 OCR 失败：
+   - `St.BoxLayout` 没有 `spacing` 属性（是 CSS 属性），改为 `style: 'spacing: Npx;'`；
+   - `St.Label` 没有 `line_wrap` / `line_wrap_mode` 属性，改为在 `label.clutter_text` 上设置；
+   - St 没有 `Spinner` 类，改用 shell 自带的 `resource:///org/gnome/shell/ui/animation.js` 的 `Spinner`。
+2. **缺少处理中反馈**：截图界面关闭后到结果出现之间没有任何提示（LLM 3-6 秒）。新增 `showOcrBusyToast()` / `destroyOcrBusyToast()`（`src/ocr/toast.js`），`dispatchOcr` 开始即显示「正在识别文字…」，结束或失败时销毁。
+3. **失败日志信息不足**：`_notifyError` 只打印错误码。现在同时打印 `error.message`、`detail`，非 `OcrError` 时打印堆栈，便于定位。
+4. **OCR 按钮可见性已确认**：在嵌套 shell（`gnome-shell --nested --wayland`）中用临时探针扩展实测，截图界面右下角容器有 3 个可见按钮（OCR `scanner-symbolic`、设置、指针），按钮条件只看 `ocr-enabled`（默认 true）。
+5. **双引擎在真实 shell 进程内验证通过**：LLM（关思考）约 1.4 秒、RapidOCR 冷启动约 3.3 秒，均能返回文本并弹出结果 toast。
+
+## 19. P3 提前实现记录（2026-11-26）
+
+用户要求内置引擎也要可用，因此 RapidOCR 通路随 P1 修复一起实现：
+
+- 新文件 `src/ocr/rapidocr.js`：惰性解析 python 路径（`ocr-rapidocr-python` → `<XDG_DATA>/gradia-capture/venv/bin/python`）、异步 `communicate_utf8_async`、超时 `force_exit()`、helper 错误码透传；
+- 新增设置键：`ocr-rapidocr-python`、`ocr-rapidocr-lang`、`ocr-rapidocr-timeout-ms`；
+- 首选项新增「RapidOCR (本地引擎)」分组，包含安装命令说明、解释器路径、语言、超时；
+- 实测（嵌套 shell，本机 4 核 CPU）：冷启动约 3.3 秒，识别结果正确；模型随 wheel 自带，断网可用。
