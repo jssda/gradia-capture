@@ -74,13 +74,13 @@ if (isGradiaFlatpakInstalled()) {
 - Google 免 key 翻译
 - 翻译继承 / 一体化模式
 - 三组代理配置
-- 剪贴板输出 + toast 展示（可复制原文/译文）
+- 剪贴板输出 + 只读结果面板（原文/译文左右对比、可滚动、面板内切换引擎与目标语言、复制后自动关闭）
 - 首选项界面（引擎选择、两套 LLM 配置、代理、目标语言、说明文字）
 - i18n 文案（zh_CN 完整）
 
 ### 2.2 本期不做（Out of scope）
 
-- 结果面板 / 可编辑文本窗（已知在 Shell 内 `St.Entry` 拿不到 fcitx5 候选，见上游 issue #19，故不做编辑）
+- 可编辑文本窗（已知在 Shell 内 `St.Entry` 拿不到 fcitx5 候选，见上游 issue #19，故不做编辑；只读结果面板见 D12）
 - 识别框可视化、表格结构还原、批量处理、历史记录
 - 流式输出、失败重试与队列
 - 除 OpenAI 兼容格式外的任何厂商专有协议
@@ -111,7 +111,8 @@ src/ocr/engine.js         引擎派发与流程编排（OCR → 可选翻译 / �
 src/ocr/rapidocr.js       本地 RapidOCR：惰性探测 python，异步子进程
 src/ocr/llm.js            多模态 LLM OCR（OpenAI 兼容）
 src/translate.js          翻译：Google 免 key / LLM
-src/ocr/toast.js          OCR 结果 toast（复用现有样式）
+src/ocr/toast.js          OCR 结果面板（只读、左右对比、可切换引擎）与识别中提示
+src/ocr/languages.js      翻译目标语言列表（面板与首选项共用）
 src/ocr/errors.js         统一错误类型 OcrError（带机器可读的 code）
 src/prefs/ocrPage.js      首选项中的「OCR 与翻译」页面
 python/ocr_helper.py      RapidOCR 命令行助手（打包进扩展）
@@ -216,7 +217,8 @@ export function destroyOcrToast()
 | `google-proxy-mode` | `s` | `'system'` | Google 翻译的代理 |
 | `google-proxy-url` | `s` | `'http://127.0.0.1:12334'` | 仅 `custom` 时使用 |
 | `ocr-copy-mode` | `s` | `'both'` | `text` / `translation` / `both`（`both` = 原文 + 空行 + 译文） |
-| `ocr-toast-chars` | `i` | `200` | toast 中预览的字符数（`0` 表示不截断） |
+
+说明：原 `ocr-toast-chars` 键已移除——结果面板改为完整显示 + 滚动（D12）。
 
 代理语义（**已在本机验证**）：
 
@@ -347,8 +349,11 @@ GET https://translate.googleapis.com/translate_a/single
 
 ## 9. UI 规范
 
-- 复用 `src/screenshotToast.js` 的样式类与结构思路，新建 `src/ocr/toast.js`（不要改动原 toast 组件的行为）；
-- toast 内容：标题（OCR / OCR + 翻译）、耗时（毫秒，P0 决策 D-P0-3）、原文预览、译文预览、按钮「复制原文」「复制译文」「关闭」；
+- 结果面板（D12）：屏幕顶部居中，宽度自适应（最大 940），原文/译文左右两栏，各栏独立滚动（超长不再截断）；
+- 面板头部：标题（OCR / OCR + 翻译）、总耗时、关闭按钮；
+- 引擎行：OCR 引擎、翻译引擎、目标语言三个下拉选择器 + 「重新识别」按钮；切换后立即写回 GSettings 并重新识别，剪贴板同步更新；
+- 面板按钮：「复制原文」「复制译文」「关闭」，点击任一复制按钮写入剪贴板后面板自动关闭；
+- OCR 按钮改为图标+文字（「提取文字」）的胶囊按钮，位置仍在截图界面右下角；
 - 剪贴板：`St.Clipboard.get_default().set_text(St.ClipboardType.CLIPBOARD, str)`；
 - 复制模式 `both` 时写入：`原文 + "\n\n" + 译文`；
 - 长文本按 `ocr-toast-chars` 截断预览（末尾加 `…`），**剪贴板内容不截断**；
@@ -439,7 +444,7 @@ grep -c 'msgstr ""' po/zh_CN.po   # 只应出现在头部
 3. `ocr-provider=llm` 时不 spawn python（验证方式：触发 OCR 后用 `pgrep -af ocr_helper.py` 应无输出）；
 4. 首次调用延迟有记录（预期 0.5–1.5 秒模型加载）。
 
-### P4 — 收尾（0.5 天）
+### P4 — 收尾（0.5 天）— 代码完成，待最终真机验收
 
 范围：三组代理的完整 UI 与说明文案、prefs 页面美化与分组、i18n 补译、`scripts/ocr-selftest.sh`、CHANGELOG。
 
@@ -590,3 +595,22 @@ P2 范围：`src/translate.js`、LLM 翻译复用、一体化、目标语言、�
 顺带修复：`Main.screenshotUI.open` 包装器在 shell 拒绝打开时不再挂扩展 UI（`src/extension.js` 增加 `visible` 检查）。
 
 详见 `docs/RESEARCH-recording-vs-screenshot.md`。
+
+## 22. 需求变更与结果面板优化（2026-11-26，需求方确认）
+
+数据依据：P2 嵌套桌面实测通过后，需求方提出以下优化（D12）：
+
+1. 结果面板中点击「复制原文/复制译文」后自动关闭（复制即完成，无需保留）；
+2. 面板加大，原文/译文左右并排对比，超长内容可滚动（不再按字符截断）；
+3. 面板内明确显示当前 OCR 引擎与翻译引擎；可直接切换 OCR 引擎、翻译引擎、目标语言后重新识别（切换立即写回配置）；
+4. 目标语言改为下拉框（列表见 `src/ocr/languages.js`，面板与首选项共用）；
+5. OCR 按钮加大为「图标 + 提取文字」的胶囊按钮；
+6. 翻译失败提示具体到错误码对应原因（超时/无法连接/HTTP 错误/未配置等）；
+7. 移除 `ocr-toast-chars` 键。
+
+同步完成的 P4 项：
+
+- `scripts/ocr-selftest.sh`：三档 OCR 后端对比自测（gradia 安装检查 / RapidOCR 直接调 helper / LLM 用 curl 调 OpenAI 兼容接口，输出耗时与字数）；
+- `CHANGELOG.md`：新增「OCR 与翻译（fork 专属）」小节，并修正「OCR 按钮依赖 Gradia」的过时描述；
+- 首选项页面按引擎/翻译配置动态显隐相关行，补充代理模式说明；
+- i18n 新增文案全部补中文。
