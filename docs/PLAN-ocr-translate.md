@@ -444,7 +444,7 @@ grep -c 'msgstr ""' po/zh_CN.po   # 只应出现在头部
 3. `ocr-provider=llm` 时不 spawn python（验证方式：触发 OCR 后用 `pgrep -af ocr_helper.py` 应无输出）；
 4. 首次调用延迟有记录（预期 0.5–1.5 秒模型加载）。
 
-### P4 — 收尾（0.5 天）— 代码完成，待最终真机验收
+### P4 — 收尾（0.5 天）— 代码与文档完成，最终真机验收进行中
 
 范围：三组代理的完整 UI 与说明文案、prefs 页面美化与分组、i18n 补译、`scripts/ocr-selftest.sh`、CHANGELOG。
 
@@ -614,3 +614,27 @@ P2 范围：`src/translate.js`、LLM 翻译复用、一体化、目标语言、�
 - `CHANGELOG.md`：新增「OCR 与翻译（fork 专属）」小节，并修正「OCR 按钮依赖 Gradia」的过时描述；
 - 首选项页面按引擎/翻译配置动态显隐相关行，补充代理模式说明；
 - i18n 新增文案全部补中文。
+
+## 23. P4 验收记录（2026-11-26）
+
+| 项 | 结果 |
+|---|---|
+| 三档代理：`system` + Google | 经系统代理成功，普通英文句子 0.9 秒返回中文 |
+| 三档代理：`direct` + 本机 OpenAI 兼容网关 | 成功（LLM OCR 1.4–1.8 秒，RapidOCR + LLM 翻译 5–6 秒） |
+| 三档代理：`custom` 指向不可用端口 | 按预期失败，提示 `NET_UNREACHABLE`，原文保留并写入剪贴板 |
+| `msgfmt --check` / 无 fuzzy / 无空译 | 通过（200 条已翻译） |
+| `./build.sh -i` 打包安装 | 通过，安装目录与仓库一致 |
+| `scripts/ocr-selftest.sh` | 通过：gradia 未安装、RapidOCR 约 5 秒/398 字、LLM 约 1.6 秒/409 字 |
+| 嵌套 shell 内结果面板 | 面板构造、重新识别（Google/LLM）、复制、关闭均正常 |
+| 真机重登后验收 | 2026-11-26 15:56 已重登加载新代码，扩展 ACTIVE，journal 无 JS 异常；功能由需求方确认中 |
+
+### 结果面板的额外实测
+
+- 嵌套桌面实测：RapidOCR + LLM 翻译一次 398 字原文 + 392 字译文，面板无异常；
+- 面板内切到 Google 翻译并重新识别：632 字原文 + 416 字译文；
+- 复制写入剪贴板 1085 字（原文 + 空行 + 译文），面板自动关闭。
+
+### 已知遗留（非阻塞）
+
+- 22+ 个提交仅存在于本地 `feature/ocr-translate`，是否推送 origin / 合并回 `local` 待需求方决定；
+- `src/metadata.json` 的描述仍是上游文案（未体现 OCR/翻译），可另行决定是否更新。
