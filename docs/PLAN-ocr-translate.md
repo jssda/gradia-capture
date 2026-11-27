@@ -691,4 +691,5 @@ P2 范围：`src/translate.js`、LLM 翻译复用、一体化、目标语言、�
 |---|---|
 | D22 | `ocr-provider` 默认值由 `gradia` 改为 `rapidocr`（第 5 节已同步）；新用户首次识别若未装 venv，会收到带安装命令的提示 |
 | D23 | 本机 dconf 中的测试值保留，不重置：`ocr-provider='llm'`、本机网关 base URL/model/key、`translate-provider='llm'` 等 |
-| 待确认 | D12（结果面板原 out-of-scope，后按需求加入）是否确认有效；`ocr-toast-chars` 键移除是否确认；需求方答复后补记 |
+| D24 | 需求方 2026-11-27 确认 D12（结果面板原 out-of-scope，后按需求加入）有效，面板范围扩大成立 |
+| 待确认 | `ocr-toast-chars` 键移除是否需要恢复；需求方确认后补记 |
