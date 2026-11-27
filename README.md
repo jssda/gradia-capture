@@ -35,11 +35,12 @@ with a fully translated Simplified Chinese interface.
 
 ### OCR (fork-only)
 
-Three engines, selectable in preferences and switchable directly from the result panel:
+Three engines, selectable in preferences and switchable directly from the result panel.
+The default is `rapidocr` (local, no AI service required):
 
 | Engine | Description | Dependency |
 |---|---|---|
-| `gradia` | Forwards the screenshot to the Gradia flatpak (upstream behavior, default) | Gradia app installed |
+| `gradia` | Forwards the screenshot to the Gradia flatpak (upstream behavior) | Gradia app installed |
 | `rapidocr` | Fully local, works offline | One-time Python venv setup |
 | `llm` | Any OpenAI-compatible vision model (e.g. DeepSeek) | Network + API configuration |
 
@@ -103,7 +104,7 @@ uv pip install --python ~/.local/share/gradia-capture/venv/bin/python \
   -i https://pypi.tuna.tsinghua.edu.cn/simple rapidocr onnxruntime
 ```
 
-Then select `RapidOCR (local)` as the OCR engine in preferences; it works offline.
+`RapidOCR (local)` is the default OCR engine, so it works offline once the environment exists; if it is missing, the first recognition shows the setup command.
 
 ## Configuration
 

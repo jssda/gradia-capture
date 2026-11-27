@@ -183,12 +183,12 @@ export function destroyOcrToast()
 
 ## 5. 配置项（GSettings）
 
-**全部加进现有 schema** `org.gnome.shell.extensions.gradia-companion`（路径不变），键名与默认值如下，**默认值不得改动**（尤其不得预填 URL/model/key）。
+**全部加进现有 schema** `org.gnome.shell.extensions.gradia-companion`（路径不变），键名与默认值如下，**默认值不得随意改动**（尤其不得预填 URL/model/key）；唯一的例外是 `ocr-provider` 的默认值，见 D22。
 
 | 键 | 类型 | 默认 | 说明 |
 |---|---|---|---|
 | `ocr-enabled` | `b` | `true` | 关闭后即使装了 Gradia 也不显示 OCR 按钮 |
-| `ocr-provider` | `s` | `'gradia'` | 可选：`gradia` / `rapidocr` / `llm`（用 `<choices>` 约束） |
+| `ocr-provider` | `s` | `'rapidocr'` | 可选：`gradia` / `rapidocr` / `llm`（用 `<choices>` 约束；默认值见 D22） |
 | `ocr-rapidocr-python` | `s` | `''` | 空 = 使用 `<扩展数据目录>/venv/bin/python` |
 | `ocr-rapidocr-lang` | `s` | `'ch'` | RapidOCR 的 `--lang_type` |
 | `ocr-rapidocr-timeout-ms` | `i` | `30000` | 子进程超时 |
@@ -525,7 +525,7 @@ for f in src/*.js src/ocr/*.js src/prefs/*.js; do cp "$f" /tmp/chk.mjs; node --c
 
 | 编号 | 决策 |
 |---|---|
-| D-P0-1 | 主推 LLM OCR（文档与首选项说明推荐）；`ocr-provider` 默认值维持 `gradia`，不改第 5 节默认值 |
+| D-P0-1 | 主推 LLM OCR（文档与首选项说明推荐）；`ocr-provider` 默认值原维持 `gradia`（后被 D22 改为 `rapidocr`） |
 | D-P0-2 | LLM 请求默认 `max_tokens` 改为 2048（含一体化模式） |
 | D-P0-3 | `showOcrToast` 显示本次耗时 |
 | D-P0-4 | P0 评估与 P1 手工验收使用本机 OpenAI 兼容网关（仅本机，配置不入库，不预填） |
@@ -684,3 +684,11 @@ P2 范围：`src/translate.js`、LLM 翻译复用、一体化、目标语言、�
 验收：
 
 - 20 次面板打开/销毁循环后，journal 中来自 `ocr/toast.js` 的 disposed 警告为 0。
+
+## 25. P3 决策记录（issue #1，2026-11-27）
+
+| 项 | 决策 |
+|---|---|
+| D22 | `ocr-provider` 默认值由 `gradia` 改为 `rapidocr`（第 5 节已同步）；新用户首次识别若未装 venv，会收到带安装命令的提示 |
+| D23 | 本机 dconf 中的测试值保留，不重置：`ocr-provider='llm'`、本机网关 base URL/model/key、`translate-provider='llm'` 等 |
+| 待确认 | D12（结果面板原 out-of-scope，后按需求加入）是否确认有效；`ocr-toast-chars` 键移除是否确认；需求方答复后补记 |
