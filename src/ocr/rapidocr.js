@@ -39,9 +39,15 @@ export async function ocrWithRapidOcr(file, { pythonPath, lang = 'ch', timeoutMs
     const started = GLib.get_monotonic_time();
     let process;
     try {
-        process = Gio.Subprocess.new(
-            [pythonPath, helperPath, '--json', '--lang', lang, imagePath],
-            Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE);
+        // 清掉宿主环境的 PYTHONPATH/PYTHONHOME 等变量, 否则外部 site-packages 会污染 venv,
+        // 报出误导性的 numpy ABI 错误 (issue #1 P1-2)
+        const launcher = new Gio.SubprocessLauncher({
+            flags: Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE,
+        });
+        for (const name of ['PYTHONPATH', 'PYTHONHOME', 'PYTHONSTARTUP'])
+            launcher.unsetenv(name);
+        launcher.setenv('PYTHONNOUSERSITE', '1', true);
+        process = launcher.spawnv([pythonPath, helperPath, '--json', '--lang', lang, imagePath]);
     } catch (e) {
         throw new OcrError('OCR_ENV_MISSING', 'Cannot start the RapidOCR helper', e.message);
     }
