@@ -531,7 +531,7 @@ export default class GradiaCompanion extends Extension {
         return { windows: entries };
     }
 
-    async _captureScreenshot({ copyOnly = false, ocr = false, externalSave = false } = {}) {
+    async _captureScreenshot({ copyOnly = false, ocr = false, externalSave = false, tempOnly = false } = {}) {
         const ui = Main.screenshotUI;
         this._commitTextEntry();
         if (ocr)
@@ -547,14 +547,14 @@ export default class GradiaCompanion extends Extension {
         }
 
         const shouldCopy = !ocr && !externalSave;
-        const shouldSave = !copyOnly && !externalSave;
+        const shouldSave = !copyOnly && !externalSave && !tempOnly;
         const format = (this._portalMode || ocr) ? 'png' : this._settings.get_string('screenshot-format');
         const playSound = this._settings.get_boolean('play-sound');
 
         const _capture = (texture, geometry, scale, cursor, compositeFn, windowComposite = null) => {
             const capturePromise = captureAndStoreScreenshot(
                 texture, geometry, scale, cursor, compositeFn, windowComposite,
-                { copy: shouldCopy, save: shouldSave, externalSave, format, playSound }
+                { copy: shouldCopy, save: shouldSave, externalSave, format, playSound, tempOnly }
             );
             // We have to await in portal mode to prevent a race condition where
             // the overlay gets closed before 'screenshot-taken' gets emitted, so the portal doesn't fail.
@@ -1269,9 +1269,12 @@ export default class GradiaCompanion extends Extension {
         if (this._settings.get_boolean('ocr-enabled')) {
             const ui = Main.screenshotUI;
             this._ocrButton = createOcrButton(async () => {
-                const file = await this._captureScreenshot({ ocr: true });
+                // Gradia 引擎要把文件交给外部应用, 必须留在截图目录; 其它引擎用缓存临时文件,
+                // 避免每按一次 Ctrl+E 就在 ~/图片/截图 里留一张 PNG (issue #1 P1-1)
+                const tempOnly = this._settings.get_string('ocr-provider') !== 'gradia';
+                const file = await this._captureScreenshot({ ocr: true, tempOnly });
                 Main.screenshotUI.close();
-                await dispatchOcr(file, { settings: this._settings, extensionPath: this.path });
+                await dispatchOcr(file, { settings: this._settings, extensionPath: this.path, tempFile: tempOnly });
             });
             ui._showPointerButtonContainer.insert_child_below(this._ocrButton, ui._showPointerButton);
         }

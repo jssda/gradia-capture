@@ -77,6 +77,46 @@ async function _saveBytesToDir(dir, bytes, format) {
     return null;
 }
 
+// OCR 用的临时截图: 写到缓存目录, 不进截图目录/最近使用; 由调用方在用完后删除 (issue #1 P1-1)
+function _tempFileDir() {
+    const cacheHome = GLib.getenv('XDG_CACHE_HOME') || GLib.build_filenamev([GLib.get_home_dir(), '.cache']);
+    return Gio.File.new_for_path(GLib.build_filenamev([cacheHome, 'gradia-capture']));
+}
+
+async function _writeTempFileAsync(bytes, format = 'png') {
+    const dir = _tempFileDir();
+    try {
+        dir.make_directory_with_parents(null);
+    } catch (e) {
+        if (!e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.EXISTS))
+            throw e;
+    }
+
+    const timestamp = GLib.DateTime.new_now_local().format('%Y%m%d-%H%M%S');
+    for (const suffix of _suffixes()) {
+        const file = dir.get_child(`ocr-${timestamp}${suffix}.${format}`);
+        try {
+            const stream = file.create(Gio.FileCreateFlags.NONE, null);
+            await new Promise((resolve, reject) => {
+                stream.write_bytes_async(bytes, GLib.PRIORITY_DEFAULT, null, (s2, res) => {
+                    try {
+                        s2.write_bytes_finish(res);
+                        s2.close(null);
+                        resolve();
+                    } catch (e) {
+                        reject(e);
+                    }
+                });
+            });
+            return file;
+        } catch (e) {
+            if (!e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.EXISTS))
+                throw e;
+        }
+    }
+    throw new Error('Cannot create a temporary OCR screenshot file');
+}
+
 function _saveToDiskAsync(bytes, format = 'png') {
     const lockdownSettings = new Gio.Settings({schema_id: 'org.gnome.desktop.lockdown'});
     if (lockdownSettings.get_boolean('disable-save-to-disk'))
@@ -108,10 +148,14 @@ function _showToast(file, pixbuf, copyOnly) {
     showScreenshotToast(file, imageContent, pixbuf.width, pixbuf.height, copyOnly);
 }
 
-async function _storeScreenshotAsync(bytes, pixbuf, { copy = true, save = true, format = 'png', alreadyEncoded = false } = {}) {
+async function _storeScreenshotAsync(bytes, pixbuf, { copy = true, save = true, format = 'png', alreadyEncoded = false, tempOnly = false } = {}) {
     let finalBytes = bytes;
     if (format !== 'png' && !alreadyEncoded && save)
         finalBytes = await _pixbufSaveToStreamAsync(pixbuf, format);
+
+    // OCR 临时截图: 只写缓存文件, 不复制到剪贴板、不弹截图 toast、不写最近使用
+    if (tempOnly)
+        return _writeTempFileAsync(finalBytes, format);
 
     if (copy) {
         const clipboard = St.Clipboard.get_default();
@@ -235,8 +279,8 @@ async function _captureWindowComposite(windowEntries, cursor) {
     return { bytes, pixbuf: finalPixbuf };
 }
 
-export async function captureAndStoreScreenshot(texture, geometry, scale, cursor, compositeFn, windowComposite = null, { copy = true, save = true, externalSave = false, format = 'png', playSound = true } = {}) {
-    if (playSound)
+export async function captureAndStoreScreenshot(texture, geometry, scale, cursor, compositeFn, windowComposite = null, { copy = true, save = true, externalSave = false, format = 'png', playSound = true, tempOnly = false } = {}) {
+    if (playSound && !tempOnly)
         global.display.get_sound_player().play_from_theme('screen-capture', _('Screenshot taken'), null);
 
     let finalBytes, finalPixbuf, alreadyEncoded = false;
@@ -275,5 +319,5 @@ export async function captureAndStoreScreenshot(texture, geometry, scale, cursor
     if (externalSave)
         return _saveToUserChosenLocation(finalBytes, finalPixbuf, format);
 
-    return _storeScreenshotAsync(finalBytes, finalPixbuf, { copy, save, format, alreadyEncoded });
+    return _storeScreenshotAsync(finalBytes, finalPixbuf, { copy, save, format, alreadyEncoded, tempOnly });
 }

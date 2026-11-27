@@ -82,7 +82,8 @@ class Selector {
 
 class OcrResultPanel {
     constructor({text = '', translation = null, ms = 0, notice = null, engine = 'llm',
-        translateProvider = 'none', targetLang = 'zh-CN', onRerun = null, settings = null} = {}) {
+        translateProvider = 'none', targetLang = 'zh-CN', onRerun = null, settings = null,
+        onClose = null} = {}) {
         this._engine = engine;
         this._translateProvider = translateProvider;
         this._targetLang = targetLang;
@@ -96,6 +97,7 @@ class OcrResultPanel {
         this._destroyed = false;
         this._menus = [];
         this._signalIds = [];
+        this._onClose = onClose;
 
         const monitor = Main.layoutManager.primaryMonitor;
         const monitorWidth = monitor?.width ?? 1280;
@@ -421,6 +423,16 @@ class OcrResultPanel {
         for (const menu of this._menus)
             menu.destroy();
         this._menus = [];
+
+        const onClose = this._onClose;
+        this._onClose = null;
+        if (onClose) {
+            try {
+                onClose();
+            } catch (e) {
+                console.warn(`[gradia-capture] OCR panel onClose failed: ${e.message}`);
+            }
+        }
 
         if (!this._container)
             return;
