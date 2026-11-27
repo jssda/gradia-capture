@@ -29,11 +29,11 @@
 
 ### OCR 文字识别（fork 专属）
 
-三档引擎，可在首选项中选择，也可在结果面板中随时切换：
+三档引擎，可在首选项中选择，也可在结果面板中随时切换；默认 `rapidocr`（本地，无需 AI 服务）：
 
 | 引擎 | 说明 | 依赖 |
 |---|---|---|
-| `gradia` | 转发截图给 Gradia flatpak（上游原有行为，默认） | 安装 Gradia 应用 |
+| `gradia` | 转发截图给 Gradia flatpak（上游原有行为） | 安装 Gradia 应用 |
 | `rapidocr` | 本地识别，可完全离线 | 一次性创建 Python venv |
 | `llm` | OpenAI 兼容的多模态模型（如 DeepSeek） | 网络 + API 配置 |
 
@@ -90,7 +90,7 @@ uv pip install --python ~/.local/share/gradia-capture/venv/bin/python \
   -i https://pypi.tuna.tsinghua.edu.cn/simple rapidocr onnxruntime
 ```
 
-安装完成后在首选项里把 OCR 引擎切到 `RapidOCR (local)` 即可断网使用。
+`RapidOCR (local)` 是默认 OCR 引擎，环境装好后即可断网使用；环境缺失时首次识别会提示上面的安装命令。
 
 ## 配置
 

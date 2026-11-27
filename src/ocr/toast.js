@@ -1,6 +1,7 @@
 import Clutter from 'gi://Clutter';
 import GLib from 'gi://GLib';
 import Pango from 'gi://Pango';
+import Shell from 'gi://Shell';
 import St from 'gi://St';
 
 import * as Animation from 'resource:///org/gnome/shell/ui/animation.js';
@@ -47,6 +48,7 @@ class Selector {
     constructor(panel, label, items, onSelect, side = St.Side.BOTTOM) {
         this._panel = panel;
         this._onSelect = onSelect;
+        this._destroyed = false;
 
         this.button = new St.Button({
             style_class: 'gradia-pill-button gradia-osd-button',
@@ -60,29 +62,48 @@ class Selector {
         Main.uiGroup.add_child(this._menu.actor);
         this._manager = new PopupMenu.PopupMenuManager(this.button);
         this._manager.addMenu(this._menu);
-        panel._addMenu(this._menu);
+        panel._selectors.push(this);
 
-        for (const item of items)
-            this._menu.addAction(item.label, () => this._onSelect(item.id));
+        for (const item of items) {
+            this._menu.addAction(item.label, () => {
+                if (!this._destroyed && !this._panel._destroyed)
+                    this._onSelect(item.id);
+            });
+        }
 
-        this.button.connect('clicked', () => {
-            if (!this._panel._busy)
+        this._clickedId = this.button.connect('clicked', () => {
+            if (!this._destroyed && !this._panel._busy)
                 this._menu.open(BoxPointer.PopupAnimation.FULL);
         });
     }
 
     setLabel(text) {
+        if (this._destroyed)
+            return;
         this.button.get_child().text = text;
     }
 
     destroy() {
+        if (this._destroyed)
+            return;
+        this._destroyed = true;
+        if (this._clickedId) {
+            this.button.disconnect(this._clickedId);
+            this._clickedId = 0;
+        }
+        try {
+            this._manager.removeMenu(this._menu);
+        } catch (e) {
+            // 管理器可能已随面板一起销毁, 忽略
+        }
         this._menu.destroy();
     }
 }
 
 class OcrResultPanel {
     constructor({text = '', translation = null, ms = 0, notice = null, engine = 'llm',
-        translateProvider = 'none', targetLang = 'zh-CN', onRerun = null, settings = null} = {}) {
+        translateProvider = 'none', targetLang = 'zh-CN', onRerun = null, settings = null,
+        onClose = null} = {}) {
         this._engine = engine;
         this._translateProvider = translateProvider;
         this._targetLang = targetLang;
@@ -94,8 +115,11 @@ class OcrResultPanel {
         this._notice = notice;
         this._busy = false;
         this._destroyed = false;
-        this._menus = [];
+        this._selectors = [];
         this._signalIds = [];
+        this._onClose = onClose;
+        this._escId = 0;
+        this._grab = null;
 
         const monitor = Main.layoutManager.primaryMonitor;
         const monitorWidth = monitor?.width ?? 1280;
@@ -254,6 +278,8 @@ class OcrResultPanel {
     }
 
     _render() {
+        if (this._destroyed)
+            return;
         this._titleLabel.text = this._translation ? _('OCR + Translation') : _('OCR');
         this._msLabel.text = this._ms > 0 ? `${_('Time')}: ${this._ms} ms` : '';
 
@@ -313,6 +339,8 @@ class OcrResultPanel {
     }
 
     _selectEngine(id) {
+        if (this._destroyed)
+            return;
         this._engine = id;
         this._engineSelector.setLabel(ENGINE_LABELS[id]?.() ?? id);
         if (this._settings)
@@ -320,6 +348,8 @@ class OcrResultPanel {
     }
 
     _selectTranslateProvider(id) {
+        if (this._destroyed)
+            return;
         this._translateProvider = id;
         this._translateSelector.setLabel(TRANSLATE_LABELS[id]?.() ?? id);
         if (this._settings)
@@ -327,6 +357,8 @@ class OcrResultPanel {
     }
 
     _selectTargetLang(id) {
+        if (this._destroyed)
+            return;
         this._targetLang = id;
         this._langSelector.setLabel(languageLabel(id));
         if (this._settings)
@@ -371,15 +403,13 @@ class OcrResultPanel {
     }
 
     _setControlsSensitive(sensitive) {
+        if (this._destroyed)
+            return;
         this._engineSelector.button.reactive = sensitive;
         this._translateSelector.button.reactive = sensitive;
         this._langSelector.button.reactive = sensitive;
         if (this._rerunButton)
             this._rerunButton.reactive = sensitive;
-    }
-
-    _addMenu(menu) {
-        this._menus.push(menu);
     }
 
     _addToStage() {
@@ -404,12 +434,44 @@ class OcrResultPanel {
             duration: ANIMATION_TIME,
             mode: Clutter.AnimationMode.EASE_OUT_CUBIC,
         });
+
+        // 抓取键盘后 Esc 才能可靠到达面板 (Wayland 下没有 grabs 时按键属于应用窗口);
+        // 只拦截 Esc, 其它按键继续传递, 关闭时释放 grab 以免残留键盘抓取 (issue #1 P2-1)
+        try {
+            const grab = Main.pushModal(this._container, {actionMode: Shell.ActionMode.NORMAL});
+            if (grab.get_seat_state() === Clutter.GrabState.ALL)
+                this._grab = grab;
+            else
+                Main.popModal(grab);
+        } catch (e) {
+            console.warn(`[gradia-capture] OCR panel could not grab the keyboard: ${e.message}`);
+        }
+
+        this._escId = this._container.connect('key-press-event', (_actor, event) => {
+            if (event.get_key_symbol() !== Clutter.KEY_Escape)
+                return Clutter.EVENT_PROPAGATE;
+            this.destroy();
+            return Clutter.EVENT_STOP;
+        });
     }
 
     destroy() {
         if (this._destroyed)
             return;
         this._destroyed = true;
+
+        if (this._escId && this._container) {
+            this._container.disconnect(this._escId);
+            this._escId = 0;
+        }
+        if (this._grab) {
+            try {
+                Main.popModal(this._grab);
+            } catch (e) {
+                console.warn(`[gradia-capture] OCR panel failed to release the keyboard grab: ${e.message}`);
+            }
+            this._grab = null;
+        }
 
         if (_activePanel === this)
             _activePanel = null;
@@ -418,9 +480,19 @@ class OcrResultPanel {
             obj.disconnect(id);
         this._signalIds = [];
 
-        for (const menu of this._menus)
-            menu.destroy();
-        this._menus = [];
+        for (const selector of this._selectors)
+            selector.destroy();
+        this._selectors = [];
+
+        const onClose = this._onClose;
+        this._onClose = null;
+        if (onClose) {
+            try {
+                onClose();
+            } catch (e) {
+                console.warn(`[gradia-capture] OCR panel onClose failed: ${e.message}`);
+            }
+        }
 
         if (!this._container)
             return;

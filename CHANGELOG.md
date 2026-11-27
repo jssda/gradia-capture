@@ -55,6 +55,12 @@
 - 新增文件：`src/net.js`、`src/translate.js`、`src/ocr/*.js`、`src/prefs/ocrPage.js`、`python/ocr_helper.py`、`scripts/ocr-selftest.sh`；
 - 方案与决策记录：`docs/PLAN-ocr-translate.md`；P0 基线数据：`docs/P0-ocr-baseline.md`；录屏限制调研：`docs/RESEARCH-recording-vs-screenshot.md`；
 - 本地 RapidOCR 环境（不进仓库）：`uv venv --python 3.13 ~/.local/share/gradia-capture/venv`，再装 `rapidocr onnxruntime`。
+- 默认 OCR 引擎改为 `RapidOCR (local)`（issue #1 P3 / D22，2026-11-27）。
+- 交付后复核修复（issue #1）：
+  - OCR 临时截图改写到 `$XDG_CACHE_HOME/gradia-capture/`，面板关闭/识别失败时自动删除，不再往`~/图片/截图`里留 PNG；
+  - RapidOCR 子进程通过 `Gio.SubprocessLauncher` 隔离 `PYTHONPATH`/`PYTHONHOME`/`PYTHONSTARTUP`，并设置 `PYTHONNOUSERSITE=1`；
+  - 结果面板支持 `Esc` 关闭（`Main.pushModal` 抓取键盘，销毁时释放）；
+  - 面板销毁时清理选择器菜单与信号，异步回调统一加存活判断，消除 `already disposed` 警告。
 
 
 ## 升级上游的做法

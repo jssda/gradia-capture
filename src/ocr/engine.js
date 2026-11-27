@@ -21,6 +21,19 @@ const TRANSLATE_GOOGLE = 'google';
 const TRANSLATE_LLM = 'llm';
 const TRANSLATE_NONE = 'none';
 
+// OCR 临时截图用完即删; 删除是异步的, 失败(已删除/路径不存在)直接忽略 (issue #1 P1-1)
+function _deleteTempFile(file) {
+    if (!file)
+        return;
+    file.delete_async(GLib.PRIORITY_DEFAULT, null, (source, result) => {
+        try {
+            source.delete_finish(result);
+        } catch (e) {
+            // 忽略: 临时文件可能已被清理
+        }
+    });
+}
+
 const ERROR_TITLES = {
     GRADIA_MISSING: N_('The Gradia app is not installed. Select another OCR engine in Settings → OCR & Translation.'),
     LLM_DISABLED: N_('LLM OCR is disabled. Enable it in Settings → OCR & Translation.'),
@@ -335,6 +348,7 @@ export async function dispatchOcr(file, opts = {}) {
     }
 
     const extensionPath = opts.extensionPath ?? null;
+    const tempFile = !!opts.tempFile;
     showOcrBusyToast(_busyMessage(provider, translateProvider));
 
     try {
@@ -348,6 +362,8 @@ export async function dispatchOcr(file, opts = {}) {
             translateProvider,
             targetLang: settings.get_string('translate-target-lang'),
             settings,
+            // 面板关闭(复制/关闭/Esc/被新面板替换)时才删临时文件, 重新识别还要用同一张图
+            onClose: tempFile ? () => _deleteTempFile(file) : null,
             onRerun: async selection => {
                 showOcrBusyToast(_busyMessage(selection.ocrProvider, selection.translateProvider));
                 try {
@@ -372,6 +388,8 @@ export async function dispatchOcr(file, opts = {}) {
         return result;
     } catch (error) {
         destroyOcrBusyToast();
+        if (tempFile)
+            _deleteTempFile(file);
         _notifyError(error);
         return {
             engine: provider,

@@ -183,12 +183,12 @@ export function destroyOcrToast()
 
 ## 5. 配置项（GSettings）
 
-**全部加进现有 schema** `org.gnome.shell.extensions.gradia-companion`（路径不变），键名与默认值如下，**默认值不得改动**（尤其不得预填 URL/model/key）。
+**全部加进现有 schema** `org.gnome.shell.extensions.gradia-companion`（路径不变），键名与默认值如下，**默认值不得随意改动**（尤其不得预填 URL/model/key）；唯一的例外是 `ocr-provider` 的默认值，见 D22。
 
 | 键 | 类型 | 默认 | 说明 |
 |---|---|---|---|
 | `ocr-enabled` | `b` | `true` | 关闭后即使装了 Gradia 也不显示 OCR 按钮 |
-| `ocr-provider` | `s` | `'gradia'` | 可选：`gradia` / `rapidocr` / `llm`（用 `<choices>` 约束） |
+| `ocr-provider` | `s` | `'rapidocr'` | 可选：`gradia` / `rapidocr` / `llm`（用 `<choices>` 约束；默认值见 D22） |
 | `ocr-rapidocr-python` | `s` | `''` | 空 = 使用 `<扩展数据目录>/venv/bin/python` |
 | `ocr-rapidocr-lang` | `s` | `'ch'` | RapidOCR 的 `--lang_type` |
 | `ocr-rapidocr-timeout-ms` | `i` | `30000` | 子进程超时 |
@@ -320,6 +320,7 @@ uv pip install --python ~/.local/share/gradia-capture/venv/bin/python -i https:/
 ```
 
 - 首次运行允许下载/加载模型（模型已随 wheel 提供，注意路径权限）。
+- 子进程环境已隔离：通过 `Gio.SubprocessLauncher` 清空 `PYTHONPATH`/`PYTHONHOME`/`PYTHONSTARTUP` 并设置 `PYTHONNOUSERSITE=1`，避免宿主环境的其他 Python site-packages 污染 venv（issue #1 P1-2）。
 
 ### 7.3 扩展侧调用
 
@@ -524,7 +525,7 @@ for f in src/*.js src/ocr/*.js src/prefs/*.js; do cp "$f" /tmp/chk.mjs; node --c
 
 | 编号 | 决策 |
 |---|---|
-| D-P0-1 | 主推 LLM OCR（文档与首选项说明推荐）；`ocr-provider` 默认值维持 `gradia`，不改第 5 节默认值 |
+| D-P0-1 | 主推 LLM OCR（文档与首选项说明推荐）；`ocr-provider` 默认值原维持 `gradia`（后被 D22 改为 `rapidocr`） |
 | D-P0-2 | LLM 请求默认 `max_tokens` 改为 2048（含一体化模式） |
 | D-P0-3 | `showOcrToast` 显示本次耗时 |
 | D-P0-4 | P0 评估与 P1 手工验收使用本机 OpenAI 兼容网关（仅本机，配置不入库，不预填） |
@@ -638,3 +639,57 @@ P2 范围：`src/translate.js`、LLM 翻译复用、一体化、目标语言、�
 
 - 22+ 个提交仅存在于本地 `feature/ocr-translate`，是否推送 origin / 合并回 `local` 待需求方决定；
 - `src/metadata.json` 的描述仍是上游文案（未体现 OCR/翻译），可另行决定是否更新。
+
+## 24. 交付后复核修复（issue #1，2026-11-27）
+
+分支 `fix/ocr-followup`，逐项原子提交：
+
+### P1-1 OCR 临时截图不再落到截图目录
+
+- `src/screenshotStore.js` 增加 `tempOnly` 路径：PNG 写入 `$XDG_CACHE_HOME/gradia-capture/ocr-<时间戳>.png`，不复制剪贴板、不弹截图 toast、不写最近使用；
+- `src/extension.js` 的 OCR 按钮按引擎决定：`gradia` 仍走常规保存（外部应用要读文件），其它引擎 `tempOnly: true`；
+- `src/ocr/engine.js` 增加 `tempFile` 选项：面板关闭（复制/关闭/Esc/被新面板替换）时删除临时文件，识别失败路径也删除；
+- 面板 `onClose` 回调负责清理，重新识别期间文件保留。
+
+验收（嵌套 shell 实测）：
+
+- 扩展 `_captureScreenshot({ocr:true,tempOnly:true})` 返回 `~/.cache/gradia-capture/ocr-20261127-162533.png`，`~/图片/截图` 前后均为 16 个文件；
+- 面板关闭后临时文件 `query_exists=false`，缓存目录无 `manual-test-*` 残留；
+- 故意把 LLM 指向 `127.0.0.1:9`：返回 `NET_UNREACHABLE`，临时文件同样被删除。
+
+### P1-2 RapidOCR 子进程环境隔离
+
+- `src/ocr/rapidocr.js` 改用 `Gio.SubprocessLauncher`，`unsetenv` 三个 Python 环境变量并设置 `PYTHONNOUSERSITE=1`。
+
+验收：
+
+- 污染 `PYTHONPATH=/nonexistent/python3.14/site-packages`、`PYTHONHOME=/nonexistent/python3.14` 后，从扩展触发 RapidOCR：成功识别 32 行 / 708 字，日志无 numpy ABI 报错；
+- 同一环境下直接跑 gjs 测试脚本亦成功（`RAPIDOCR_ENV_ISOLATION_OK`）。
+
+### P2-1 结果面板 Esc 关闭
+
+- 面板上屏后 `Main.pushModal(container, {actionMode: NORMAL})` 抓取键盘，容器处理 `key-press-event`：Esc → `destroy()`；销毁时断开信号并 `Main.popModal()` 释放 grab。
+
+验收：
+
+- 面板显示时键盘焦点为面板容器（`St_BoxLayout 752x409`），销毁后焦点释放（`null`），20 次开关无 `incorrect pop`/grab 残留警告；
+- Esc 实际按键需在真实会话人工确认（嵌套 Wayland 无法合成按键事件）。
+
+### P2-2 disposed 警告
+
+- `Selector` 自己持有并清理 `PopupMenu`/`PopupMenuManager`，销毁时断开按钮信号并 `removeMenu`；
+- 面板销毁统一断开 Esc/按钮信号、销毁选择器，`onClose` 只执行一次；
+- 菜单动作、`_render`、`_setControlsSensitive`、三个选择器回调都加 `_destroyed` 判断。
+
+验收：
+
+- 20 次面板打开/销毁循环后，journal 中来自 `ocr/toast.js` 的 disposed 警告为 0。
+
+## 25. P3 决策记录（issue #1，2026-11-27）
+
+| 项 | 决策 |
+|---|---|
+| D22 | `ocr-provider` 默认值由 `gradia` 改为 `rapidocr`（第 5 节已同步）；新用户首次识别若未装 venv，会收到带安装命令的提示 |
+| D23 | 本机 dconf 中的测试值保留，不重置：`ocr-provider='llm'`、本机网关 base URL/model/key、`translate-provider='llm'` 等 |
+| D24 | 需求方 2026-11-27 确认 D12（结果面板原 out-of-scope，后按需求加入）有效，面板范围扩大成立 |
+| 待确认 | `ocr-toast-chars` 键移除是否需要恢复；需求方确认后补记 |
